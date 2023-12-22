@@ -103,12 +103,9 @@ def load_llm(model_name : str) -> Union[LlamaForCausalLM]:
         return None
 
 #Select a model using the radio buttons
-#Must have at least two options.  With only one option streamlit appears to
-#become confused and list each character as a separate option.
 def select_llm() -> Union[LlamaForCausalLM]:
     model_name = st.sidebar.radio("Choose LLM:",
-                                  ("llama-2-7b-int8",
-                                   "llama-2-7b-int8"))
+                                  ["llama-2-7b-int8"])
     #ignoring temperature for now
     temperature = st.sidebar.slider("Temperature:", min_value=0.0,
                                     max_value=1.0, value=0.0, step=0.01)

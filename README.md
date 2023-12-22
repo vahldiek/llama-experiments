@@ -8,7 +8,7 @@ It is easiest to build a container image for the development container.  The scr
 When launching the container it is important to allocate enough memory to it, even the 7 Billion parameter Llama models can require 80GB or more.
 
 If you want the scripts to automatically pull images from Hugging Face, you should rename the file .env_template to .env and put a valid
-Huggingface token in the file.
+Hugging Face token in the file.
 
 ## streamlit
 The sample Python code is designed to work with `streamlit` a simple HTTP server that presents a chatbot interface.
