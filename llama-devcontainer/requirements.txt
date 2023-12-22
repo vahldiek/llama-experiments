@@ -12,3 +12,4 @@ torchaudio
 datasets
 accelerate
 sentencepiece
+parse

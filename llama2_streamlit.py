@@ -16,28 +16,26 @@ from transformers import LlamaTokenizer, AutoConfig, AutoModelForCausalLM, AutoT
 import torch
 from torch.nn.functional import pad
 from torch.utils.data import DataLoader
-from langchain.llms.huggingface_pipeline import HuggingFacePipeline
 
 from typing import List, Union
 
-from langchain.callbacks import get_openai_callback
-from langchain.schema import (SystemMessage, HumanMessage, AIMessage)
-from langchain.callbacks.manager import CallbackManager
-from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 import streamlit as st
 import intel_extension_for_pytorch as ipex
+from parse import *
 
 #can use this version to download model again
 #original_model_id = "meta-llama/Llama-2-7b-hf"
 
 #Set to True to use 4 bit auto-quanitzed model on GPU
-use_GPU=False
+use_GPU=True
 
 #use this version to load model from local directory
 original_model_id = "./model_llama-2-7b-chat-hf"
 
 #This is the model quantized by the Intel tools
 quantized_model_path = "./int8.pt"
+#Set to None to bypass loading the quantized model
+quantized_model_path = None
 
 
 def init_page() -> None:
@@ -51,26 +49,20 @@ def init_page() -> None:
 def init_messages() -> None:
     clear_button = st.sidebar.button("Clear Conversation", key="clear")
     if clear_button or "messages" not in st.session_state:
-        st.session_state.messages = [
-            SystemMessage(
-                content="You are a helpful AI assistant. Reply your answer in mardkown format.")
-        ]
-        st.session_state.costs = []
+        #Prime the message stream with a message to the system
+        st.session_state.messages = [{"role" : "system", "content" : "You are a helpful AI assistant. Reply in mardkown format."}]
 
 
 #streamlit will only call this function if the model name parameter value changes
 #The @st.cache_resource decoration indcates this to streamlit
 @st.cache_resource
-def load_llm(model_name : str) -> HuggingFacePipeline:
+def load_llm(model_name : str) -> Union[LlamaForCausalLM]:
     if model_name.startswith("llama-2-"):
-        callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
-
         config = AutoConfig.from_pretrained(original_model_id, torchscript=True)
         if not hasattr(config, "text_max_length"):
             config.text_max_length = 64
 
-
-        tokenizer = LlamaTokenizer.from_pretrained(original_model_id, use_fast=True)
+        st.session_state.tokenizer = LlamaTokenizer.from_pretrained(original_model_id, use_fast=True)
 
         if(use_GPU):
             inference_device_map="auto"
@@ -79,18 +71,17 @@ def load_llm(model_name : str) -> HuggingFacePipeline:
             inference_device_map=torch.device('cpu')
             use_bitsandbytes_quantization=False
 
-        with ipex.OnDevice(dtype=torch.float, device="meta"):
-            original_model = LlamaForCausalLM.from_pretrained(
-                                original_model_id, config=config, device_map=inference_device_map,
-                                load_in_4bit=use_bitsandbytes_quantization)
+        st.session_state.model = LlamaForCausalLM.from_pretrained(
+                            original_model_id, config=config, device_map=inference_device_map,
+                            load_in_4bit=use_bitsandbytes_quantization)
             
         #Load the Intel quantized model if not using GPU
-        if(not use_GPU):
+        if (not use_GPU) and not (quantized_model_path is None):
             #begin optimization for using Intel quantized model
             torch._C._jit_set_texpr_fuser_enabled(False)
             qconfig = ipex.quantization.default_static_qconfig_mapping
-            original_model = ipex.optimize_transformers(
-                original_model.eval(),
+            st.session_state.model = ipex.optimize_transformers(
+                st.session_state.model.eval(),
                 dtype=torch.float,
                 inplace=True,
                 quantization_config=qconfig,
@@ -101,23 +92,16 @@ def load_llm(model_name : str) -> HuggingFacePipeline:
             self_jit = torch.jit.load(quantized_model_path)
             self_jit = torch.jit.freeze(self_jit.eval())
             #Not sure exactly what this does.  Swaps in the quantized model for the original?
-            ipex._set_optimized_model_for_generation(original_model, optimized_model="poop")
-        
+            ipex._set_optimized_model_for_generation(st.session_state.model, optimized_model=self_jit)
 
-        #Create a Hugging Face pipeline which can then be used by langchain
-        if(use_GPU):
-            pipe = pipeline("text-generation", model=original_model, tokenizer=tokenizer, max_new_tokens=2000, device_map="auto")
-        else:
-             pipe = pipeline("text-generation", model=original_model, tokenizer=tokenizer, max_new_tokens=2000, device=-1)
-           
-        return HuggingFacePipeline(pipeline=pipe)
+        return st.session_state.model
     else:
         return None
 
 #Select a model using the radio buttons
 #Must have at least two options.  With only one option streamlit appears to
 #become confused and list each character as a separate option.
-def select_llm() -> Union[HuggingFacePipeline]:
+def select_llm() -> Union[LlamaForCausalLM]:
     model_name = st.sidebar.radio("Choose LLM:",
                                   ("llama-2-7b-int8",
                                    "llama-2-7b-int8"))
@@ -126,50 +110,68 @@ def select_llm() -> Union[HuggingFacePipeline]:
                                     max_value=1.0, value=0.0, step=0.01)
     return load_llm(model_name)
 
+
+#Loop through the entire response until we get the last section after the last instruction
+#Keep going until we hit the final close inst tag.
+def retrive_last_llama2_response(response_str: str):
+    remaining_string = response_str
+    return_val = None
+    while return_val is None:
+        items = parse("{instructions}[/INST]{remainder}", remaining_string)
+        if items is not None:
+            remaining_string = items['remainder']
+        else:
+            return_val = remaining_string
+
+    #Double check to see if we ended with an instruction and no response
+    final_parse = parse("{instructions}[/INST]", return_val)
+    if not final_parse is None:
+        return None
+    return return_val
+
+
 #Called each time the user enters something into the chat box and sends it
-def get_answer(llm, messages) -> tuple[str, float]:
-    if isinstance(llm, HuggingFacePipeline):
-        return llm(llama_v2_prompt(convert_langchainschema_to_dict(messages))), 0.0
+def get_answer() -> tuple[str, float]:
+    if isinstance(st.session_state.model, LlamaForCausalLM):
+        prompt = llama_v2_prompt_from_messages()
 
 
-#Determine type of role
-def find_role(message: Union[SystemMessage, HumanMessage, AIMessage]) -> str:
-    """
-    Identify role name from langchain.schema object.
-    """
-    if isinstance(message, SystemMessage):
-        return "system"
-    if isinstance(message, HumanMessage):
-        return "user"
-    if isinstance(message, AIMessage):
-        return "assistant"
-    raise TypeError("Unknown message type.")
+        #Args for generate
+        generate_kwargs = dict(do_sample=False, temperature=0.9, num_beams=1)
+        input_ids = st.session_state.tokenizer(prompt, return_tensors="pt").input_ids
+        if(use_GPU):
+            input_ids = input_ids.to('cuda')
+
+        #This call begins exercising the model
+        output = st.session_state.model.generate(
+            input_ids, max_new_tokens=2000, **generate_kwargs
+        )
+        gen_text = st.session_state.tokenizer.batch_decode(output, skip_special_tokens=True)
+        #response is a single string, following all of the data we already sent
+        response = retrive_last_llama2_response(gen_text[0])
+
+        if not response is None:
+            return response
+        else:
+            return "The model did not return any results"
+    else:
+        return "Model not initialized"
 
 
-#Put into dictionary format so streamlit can process
-def convert_langchainschema_to_dict(
-        messages: List[Union[SystemMessage, HumanMessage, AIMessage]]) \
-        -> List[dict]:
-    """
-    Convert the chain of chat messages in list of langchain.schema format to
-    list of dictionary format.
-    """
-    return [{"role": find_role(message),
-             "content": message.content
-             } for message in messages]
 
-
-#Turn the dictionary, used by streamlit, into a character string formatted
+#Turn the dictionary used to store prompts and responses into a character string formatted
 #to be consumed by llama2
-def llama_v2_prompt(messages: List[dict]) -> str:
+def llama_v2_prompt_from_messages() -> str:
     """
     Convert the messages in list of dictionary format to Llama2 compliant format.
     """
+    messages = st.session_state.messages
     B_INST, E_INST = "[INST]", "[/INST]"
     B_SYS, E_SYS = "<<SYS>>\n", "\n<</SYS>>\n\n"
     BOS, EOS = "<s>", "</s>"
     DEFAULT_SYSTEM_PROMPT = f"""You are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe. Please ensure that your responses are socially unbiased and positive in nature. If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information."""
 
+    #If the first message in the list is not a system message, prepend the default system message
     if messages[0]["role"] != "system":
         messages = [
             {
@@ -177,6 +179,8 @@ def llama_v2_prompt(messages: List[dict]) -> str:
                 "content": DEFAULT_SYSTEM_PROMPT,
             }
         ] + messages
+
+    #Combine the system message with the first user message
     messages = [
         {
             "role": messages[1]["role"],
@@ -184,14 +188,27 @@ def llama_v2_prompt(messages: List[dict]) -> str:
         }
     ] + messages[2:]
 
+
+    #Some very pythonic code to look at each pair of two contiguous list entries, and create a tuple
+    #with the 2nd dictionary entry fom each in each of the two items
+    # (a bit dangerous, assumes 'content' is the 2nd dictionary entry)
+    #Then formats a string to put the first piece of content, the user question inside of the [INST]
+    #block and puts the second piece of content, presumably the answer from the assistant, outside
+    #of the block and wrap the whole message in <s> blocks.
+    #Took me much longer to write this comment than it would have to write a more readable for loop
+    #to do the same thing, but this is reused code and maybe it is common in Python.
     messages_list = [
-        f"{BOS}{B_INST} {(prompt['content']).strip()} {E_INST} {(answer['content']).strip()} {EOS}"
+        f"{B_INST} {(prompt['content']).strip()} {E_INST} {(answer['content']).strip()} "
         for prompt, answer in zip(messages[::2], messages[1::2])
     ]
+
+    #This pythonic code also assumes an odd number of list elements with the last being the most 
+    #recent question to the language model.
     messages_list.append(
-        f"{BOS}{B_INST} {(messages[-1]['content']).strip()} {E_INST}")
+        f"{B_INST} {(messages[-1]['content']).strip()} {E_INST}")
 
     return "".join(messages_list)
+
 
 
 #main function.  This script is launched multiple times by streamlit
@@ -204,21 +221,20 @@ def main() -> None:
 
     # Supervise user input
     if user_input := st.chat_input("Enter your question!"):
-        st.session_state.messages.append(HumanMessage(content=user_input))
+        st.session_state.messages.append({"role" : "user", "content" : user_input})
         with st.spinner("The LLM is typing ..."):
-            answer, cost = get_answer(llm, st.session_state.messages)
-        st.session_state.messages.append(AIMessage(content=answer))
-        st.session_state.costs.append(cost)
+            answer = get_answer()
+        st.session_state.messages.append({"role" : "assistant", "content" : answer})
 
     # Display chat history
-    messages = st.session_state.get("messages", [])
+    messages = st.session_state.messages
     for message in messages:
-        if isinstance(message, AIMessage):
+        if message["role"] == "assistant":
             with st.chat_message("assistant"):
-                st.markdown(message.content)
-        elif isinstance(message, HumanMessage):
+                st.markdown(message["content"])
+        elif message["role"] == "user":
             with st.chat_message("user"):
-                st.markdown(message.content)
+                st.markdown(message["content"])
 
 
 # This app will be launched multiple times by streamlit
