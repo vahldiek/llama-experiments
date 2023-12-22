@@ -23,19 +23,23 @@ import streamlit as st
 import intel_extension_for_pytorch as ipex
 from parse import *
 
-#can use this version to download model again
-#original_model_id = "meta-llama/Llama-2-7b-hf"
-
-#Set to True to use 4 bit auto-quanitzed model on GPU
-use_GPU=True
+#This is the model quantized by the Intel tools
+#quantized_model_path = "./int8.pt"
+#Set to None to bypass loading the quantized model
+quantized_model_path = None
 
 #use this version to load model from local directory
 original_model_id = "./model_llama-2-7b-chat-hf"
 
-#This is the model quantized by the Intel tools
-quantized_model_path = "./int8.pt"
-#Set to None to bypass loading the quantized model
-quantized_model_path = None
+#can use this version to download model again
+#original_model_id = "meta-llama/Llama-2-7b-hf"
+
+#Set to True to use 4 bit auto-quanitzed model on GPU
+use_GPU=False
+
+
+
+
 
 
 def init_page() -> None:
