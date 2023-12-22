@@ -30,6 +30,9 @@ import intel_extension_for_pytorch as ipex
 #can use this version to download model again
 #original_model_id = "meta-llama/Llama-2-7b-hf"
 
+#Set to True to use 4 bit auto-quanitzed model on GPU
+use_GPU=False
+
 #use this version to load model from local directory
 original_model_id = "./model_llama-2-7b-chat-hf"
 
@@ -66,30 +69,47 @@ def load_llm(model_name : str) -> HuggingFacePipeline:
         if not hasattr(config, "text_max_length"):
             config.text_max_length = 64
 
-        original_model = LlamaForCausalLM.from_pretrained(
-            original_model_id, config=config, low_cpu_mem_usage=True)
-        tokenizer = LlamaTokenizer.from_pretrained(original_model_id)
 
+        tokenizer = LlamaTokenizer.from_pretrained(original_model_id, use_fast=True)
 
-        #begin optimization for using quantized model
-        torch._C._jit_set_texpr_fuser_enabled(False)
-        qconfig = ipex.quantization.default_static_qconfig_mapping
-        original_model = ipex.optimize_transformers(
-            original_model.eval(),
-            dtype=torch.float,
-            inplace=True,
-            quantization_config=qconfig,
-            deployment_mode=False,
-        )
+        if(use_GPU):
+            inference_device_map="auto"
+            use_bitsandbytes_quantization=True
+        else:
+            inference_device_map=torch.device('cpu')
+            use_bitsandbytes_quantization=False
 
-        #Load the quantized model
-        self_jit = torch.jit.load(quantized_model_path)
-        self_jit = torch.jit.freeze(self_jit.eval())
-        #Not sure exactly what this does.  Swaps in the quantized model for the original?
-        ipex._set_optimized_model_for_generation(original_model, optimized_model=self_jit)
+        with ipex.OnDevice(dtype=torch.float, device="meta"):
+            original_model = LlamaForCausalLM.from_pretrained(
+                                original_model_id, config=config, device_map=inference_device_map,
+                                load_in_4bit=use_bitsandbytes_quantization)
+            
+        #Load the Intel quantized model if not using GPU
+        if(not use_GPU):
+            #begin optimization for using Intel quantized model
+            torch._C._jit_set_texpr_fuser_enabled(False)
+            qconfig = ipex.quantization.default_static_qconfig_mapping
+            original_model = ipex.optimize_transformers(
+                original_model.eval(),
+                dtype=torch.float,
+                inplace=True,
+                quantization_config=qconfig,
+                deployment_mode=False,
+            )
+
+            #Load the Intel quantized model
+            self_jit = torch.jit.load(quantized_model_path)
+            self_jit = torch.jit.freeze(self_jit.eval())
+            #Not sure exactly what this does.  Swaps in the quantized model for the original?
+            ipex._set_optimized_model_for_generation(original_model, optimized_model="poop")
+        
 
         #Create a Hugging Face pipeline which can then be used by langchain
-        pipe = pipeline("text-generation", model=original_model, tokenizer=tokenizer, max_new_tokens=2000, device_map="auto")
+        if(use_GPU):
+            pipe = pipeline("text-generation", model=original_model, tokenizer=tokenizer, max_new_tokens=2000, device_map="auto")
+        else:
+             pipe = pipeline("text-generation", model=original_model, tokenizer=tokenizer, max_new_tokens=2000, device=-1)
+           
         return HuggingFacePipeline(pipeline=pipe)
     else:
         return None
