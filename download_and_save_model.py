@@ -20,7 +20,7 @@ if not hasattr(config, "text_max_length"):
     config.text_max_length = 64
 
 user_model = LlamaForCausalLM.from_pretrained(
-    model_id, config=config, low_cpu_mem_usage=True, device_map="auto", load_in_4bit=True)
+    model_id, config=config, low_cpu_mem_usage=True)
 user_model.eval()
 tokenizer = LlamaTokenizer.from_pretrained(model_id, use_fast=True)
 
