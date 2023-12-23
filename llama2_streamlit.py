@@ -11,7 +11,9 @@ import os
 from dotenv import load_dotenv
 
 from datasets import load_dataset
-from transformers import LlamaTokenizer, AutoConfig, AutoModelForCausalLM, AutoTokenizer, pipeline, LlamaForCausalLM
+from transformers import  (LlamaTokenizer, AutoConfig, AutoModelForCausalLM,
+                            AutoTokenizer, pipeline, LlamaForCausalLM,
+                            Conversation)
 
 import torch
 from torch.nn.functional import pad
@@ -24,9 +26,9 @@ import intel_extension_for_pytorch as ipex
 from parse import *
 
 #This is the model quantized by the Intel tools
-#quantized_model_path = "./int8.pt"
+quantized_model_path = "./saved_results/model_llama-2-7b-chat-int8.pt"
 #Set to None to bypass loading the quantized model
-quantized_model_path = None
+#quantized_model_path = None
 
 #use this version to load model from local directory
 original_model_id = "./model_llama-2-7b-chat-hf"
@@ -35,7 +37,14 @@ original_model_id = "./model_llama-2-7b-chat-hf"
 #original_model_id = "meta-llama/Llama-2-7b-hf"
 
 #Set to True to use 4 bit auto-quanitzed model on GPU
-use_GPU=True
+use_GPU=False
+
+system_prompt_content = """You are a helpful AI assistant. Reply in mardkown format.
+If anyone asks who you are be sure to tell them that you are running on an Intel Xeon processor."""
+
+additional_context = """The Security and Privacy Research group (SPR) led by Intel Labs Vice President Sridhar Iyengar
+is part of Intel Labs in Intel corporation.  It is a collection of some of the most accomplished scientists in the world.
+Their achievements in security, CPU architecture, cryptography, confidential computing, and machine learning are truly world leading"""
 
 
 
@@ -52,9 +61,13 @@ def init_page() -> None:
 
 def init_messages() -> None:
     clear_button = st.sidebar.button("Clear Conversation", key="clear")
-    if clear_button or "messages" not in st.session_state:
-        #Prime the message stream with a message to the system
-        st.session_state.messages = [{"role" : "system", "content" : "You are a helpful AI assistant. Reply in mardkown format."}]
+    if clear_button or "conversation" not in st.session_state:
+        #In the initial conversation set the system prompt and set additional context, sort of a poor-man's
+        #RAG
+        st.session_state.conversation = Conversation(build_system_prompt(system_prompt_content) + "set context")
+        st.session_state.conversation.append_response(additional_context)
+        st.session_state.conversation.mark_processed()
+
 
 
 #streamlit will only call this function if the model name parameter value changes
@@ -102,6 +115,7 @@ def load_llm(model_name : str) -> Union[LlamaForCausalLM]:
     else:
         return None
 
+
 #Select a model using the radio buttons
 def select_llm() -> Union[LlamaForCausalLM]:
     model_name = st.sidebar.radio("Choose LLM:",
@@ -112,103 +126,64 @@ def select_llm() -> Union[LlamaForCausalLM]:
     return load_llm(model_name)
 
 
-#Loop through the entire response until we get the last section after the last instruction
-#Keep going until we hit the final close inst tag.
-def retrive_last_llama2_response(response_str: str):
-    remaining_string = response_str
-    return_val = None
-    while return_val is None:
-        items = parse("{instructions}[/INST]{remainder}", remaining_string)
-        if items is not None:
-            remaining_string = items['remainder']
-        else:
-            return_val = remaining_string
+#Add appropriate tags around system prompt
+def build_system_prompt(prompt_content: str):
+    system_begin = "<<SYS>>\n "
+    system_end = "\n<</SYS>>\n\n"
+    return system_begin + prompt_content + system_end
 
-    #Double check to see if we ended with an instruction and no response
-    final_parse = parse("{instructions}[/INST]", return_val)
-    if not final_parse is None:
-        return None
-    return return_val
+#Retrieve only the tokens received following what was input to the model
+def get_chat_response_tensor(input_tensor: torch.Tensor, output_tensor: torch.Tensor) -> torch.Tensor:
+    input_size = input_tensor.size()
 
+    #return a two dimensional array, should be same as input, which instructs calls to tokenizer.batch_decode
+    #to return the full string as the first array element, and an array of tokens as the second element
+    return output_tensor[:,input_size[1]:]
 
 #Called each time the user enters something into the chat box and sends it
-def get_answer() -> tuple[str, float]:
+def get_answer_from_llm() -> str:
+    tokenizer = st.session_state.tokenizer
+    conversation = st.session_state.conversation
+    llm = st.session_state.model
     if isinstance(st.session_state.model, LlamaForCausalLM):
-        prompt = llama_v2_prompt_from_messages()
-
-
+        #allow the LLama model class to actually format the prompt
+        input_ids = tokenizer._build_conversation_input_ids(conversation)
+        input_tensor = tokenizer.encode(input_ids, return_tensors='pt')
+        if(use_GPU):
+            input_tensor = input_tensor.to('cuda')
         #Args for generate
         generate_kwargs = dict(do_sample=False, temperature=0.9, num_beams=1)
-        input_ids = st.session_state.tokenizer(prompt, return_tensors="pt").input_ids
-        if(use_GPU):
-            input_ids = input_ids.to('cuda')
 
-        #This call begins exercising the model
-        output = st.session_state.model.generate(
-            input_ids, max_new_tokens=2000, **generate_kwargs
+        #This call exercises the model
+        output_tensor = llm.generate(
+            input_tensor, max_new_tokens=2000, **generate_kwargs
         )
-        gen_text = st.session_state.tokenizer.batch_decode(output, skip_special_tokens=True)
-        #response is a single string, following all of the data we already sent
-        response = retrive_last_llama2_response(gen_text[0])
 
-        if not response is None:
-            return response
-        else:
-            return "The model did not return any results"
+        #separate the response from the input that was sent to the model
+        response_tensor = get_chat_response_tensor(input_tensor, output_tensor)
+
+        gen_text = tokenizer.batch_decode(response_tensor, skip_special_tokens=True)
+        #first element returned is the full string, second element is an array of strings
+        #one for each token
+        response_str = gen_text[0]
+        conversation.append_response(response_str)
+        #mark ready to add another user message
+        conversation.mark_processed()
+
+        return response_str
     else:
         return "Model not initialized"
 
-
-
-#Turn the dictionary used to store prompts and responses into a character string formatted
-#to be consumed by llama2
-def llama_v2_prompt_from_messages() -> str:
-    """
-    Convert the messages in list of dictionary format to Llama2 compliant format.
-    """
-    messages = st.session_state.messages
-    B_INST, E_INST = "[INST]", "[/INST]"
-    B_SYS, E_SYS = "<<SYS>>\n", "\n<</SYS>>\n\n"
-    BOS, EOS = "<s>", "</s>"
-    DEFAULT_SYSTEM_PROMPT = f"""You are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe. Please ensure that your responses are socially unbiased and positive in nature. If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information."""
-
-    #If the first message in the list is not a system message, prepend the default system message
-    if messages[0]["role"] != "system":
-        messages = [
-            {
-                "role": "system",
-                "content": DEFAULT_SYSTEM_PROMPT,
-            }
-        ] + messages
-
-    #Combine the system message with the first user message
-    messages = [
-        {
-            "role": messages[1]["role"],
-            "content": B_SYS + messages[0]["content"] + E_SYS + messages[1]["content"],
-        }
-    ] + messages[2:]
-
-
-    #Some very pythonic code to look at each pair of two contiguous list entries, and create a tuple
-    #with the 2nd dictionary entry fom each in each of the two items
-    # (a bit dangerous, assumes 'content' is the 2nd dictionary entry)
-    #Then formats a string to put the first piece of content, the user question inside of the [INST]
-    #block and puts the second piece of content, presumably the answer from the assistant, outside
-    #of the block and wrap the whole message in <s> blocks.
-    #Took me much longer to write this comment than it would have to write a more readable for loop
-    #to do the same thing, but this is reused code and maybe it is common in Python.
-    messages_list = [
-        f"{B_INST} {(prompt['content']).strip()} {E_INST} {(answer['content']).strip()} "
-        for prompt, answer in zip(messages[::2], messages[1::2])
-    ]
-
-    #This pythonic code also assumes an odd number of list elements with the last being the most 
-    #recent question to the language model.
-    messages_list.append(
-        f"{B_INST} {(messages[-1]['content']).strip()} {E_INST}")
-
-    return "".join(messages_list)
+#The first user message to the model contains the system directive
+#but we don't want to display that.
+def remove_system_prompt_preamble(input_str: str):
+    system_prompt = build_system_prompt(system_prompt_content)
+    #If the system prompt is found at the beginning of the string, remove it.
+    if input_str.find(system_prompt) == 0:
+        len_system_prompt = len(system_prompt)
+        return input_str[len_system_prompt:]
+    else:
+        return input_str
 
 
 
@@ -222,20 +197,31 @@ def main() -> None:
 
     # Supervise user input
     if user_input := st.chat_input("Enter your question!"):
-        st.session_state.messages.append({"role" : "user", "content" : user_input})
+        if st.session_state.conversation is None:
+            st.session_state.conversation = Conversation(build_system_prompt(system_prompt_content) + user_input)
+        else:
+            st.session_state.conversation.add_user_input(user_input)
         with st.spinner("The LLM is typing ..."):
-            answer = get_answer()
-        st.session_state.messages.append({"role" : "assistant", "content" : answer})
+            answer = get_answer_from_llm()
 
     # Display chat history
-    messages = st.session_state.messages
-    for message in messages:
-        if message["role"] == "assistant":
-            with st.chat_message("assistant"):
-                st.markdown(message["content"])
-        elif message["role"] == "user":
-            with st.chat_message("user"):
-                st.markdown(message["content"])
+    if not st.session_state.conversation is None:
+        # Walk through all of text in the conversation
+        num_user_messages = 0
+        num_assistant_messages = 0
+        for is_user, text in st.session_state.conversation.iter_texts():
+            if is_user:
+                #Skip the first user message because that just sets the system prompt
+                if num_user_messages > 0:
+                    with st.chat_message("user"):
+                        st.markdown(text)
+                num_user_messages = num_user_messages + 1
+            else:
+                #Skip the first assistant message since that only sets context
+                if num_assistant_messages > 0:
+                    with st.chat_message("assistant"):
+                        st.markdown(text)
+                num_assistant_messages = num_assistant_messages + 1
 
 
 # This app will be launched multiple times by streamlit

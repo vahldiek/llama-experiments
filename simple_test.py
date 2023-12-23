@@ -102,7 +102,7 @@ conv.mark_processed()
 conv.add_user_input("request2")
 conv.append_response("answer2")
 conv.mark_processed()
-conv.add_user_input("who are you?")
+conv.add_user_input("tell me a joke")
 
 
 input_ids = tokenizer._build_conversation_input_ids(conv)
