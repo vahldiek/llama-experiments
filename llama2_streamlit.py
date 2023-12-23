@@ -35,7 +35,7 @@ original_model_id = "./model_llama-2-7b-chat-hf"
 #original_model_id = "meta-llama/Llama-2-7b-hf"
 
 #Set to True to use 4 bit auto-quanitzed model on GPU
-use_GPU=False
+use_GPU=True
 
 
 

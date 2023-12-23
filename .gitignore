@@ -2,4 +2,6 @@
 *.pt
 model_llama-2-7b-chat-hf/
 model_llama-2-7b-hf/
+data/
+saved_results/
 

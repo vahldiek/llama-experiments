@@ -1,0 +1,2 @@
+#!/bin/bash
+python3 /home/vscode/intel-extension-for-pytorch/examples/cpu/inference/python/llm/single_instance/run_llama_quantization.py --ipex-smooth-quant --int8 --model-id="./model_llama-2-7b-chat-hf" --dataset="./data/NeelNanda/pile-10k" 
