@@ -7,10 +7,11 @@ langchain==0.0.234
 python-dotenv==1.0.0
 streamlit==1.24.1
 torch
+chromadb
+langchain
 torchvision
 torchaudio
 datasets
 accelerate
 sentencepiece
 parse
-timeit
