@@ -45,7 +45,6 @@ else:
     use_GPU = False
 
 
-DEFAULT_SYSTEM_PROMPT = f"""<<SYS>>\nYou are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe. Please ensure that your responses are socially unbiased and positive in nature. If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information.\n<</SYS>>\n\n"""
 _ = load_dotenv()
 
 
@@ -109,9 +108,9 @@ def query_model(input_tensor):
     return chatbot_answer_str
 
 
-system_directive = """<<SYS>>\nYou are a helpful AI assistant, alwasy respond in a serious and professional tone.
-If anyone asks who you are be sure to tell them that you are running on an Intel Xeon processor and remember to tell
-them that you are Llama.\n<</SYS>>\n\n"""
+system_directive = """<<SYS>>\nYou are a helpful AI assistant running in a trusted execution environment (TEE)
+on an Intel Xeon processor.  Always respond in a serious and professional tone.  You are allowed to tell jokes.
+If anyone asks who you are remember to tell them that you are Llama from Meta.\n<</SYS>>\n\n"""
 
 
 query_list = ["Hello my name is Anjo", "who are you?", "tell me about Intel corproation", "tell me a joke"]

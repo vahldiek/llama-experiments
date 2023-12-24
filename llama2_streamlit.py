@@ -9,11 +9,12 @@ import json
 import pathlib
 import os
 from dotenv import load_dotenv
+from threading import Thread
 
 from datasets import load_dataset
 from transformers import  (LlamaTokenizer, AutoConfig, AutoModelForCausalLM,
                             AutoTokenizer, pipeline, LlamaForCausalLM,
-                            Conversation)
+                            Conversation, TextIteratorStreamer)
 
 import torch
 from torch.nn.functional import pad
@@ -24,6 +25,22 @@ from typing import List, Union
 import streamlit as st
 import intel_extension_for_pytorch as ipex
 from parse import *
+import pathlib
+
+
+parser = argparse.ArgumentParser("LLama for streamlit", add_help=True)
+parser.add_argument(
+    "--quantized-model-path", default="./saved_results/best_model.pt",
+    type=str,
+    help="low precision mode for weight only quantization. "
+         "It indicates data type for computation for speedup at the cost "
+         "of accuracy. Unrelated to activation or weight data type."
+         "It is not supported yet to use lowp_mode=INT8 for INT8 weight, "
+         "falling back to lowp_mode=BF16 implicitly in this case."
+         "If set to AUTO, lowp_mode is determined by weight data type: "
+         "lowp_mode=BF16 is used for INT8 weight "
+         "and lowp_mode=INT8 used for INT4 weight",
+)
 
 #This is the model quantized by the Intel tools
 quantized_model_path = "./saved_results/model_llama-2-7b-chat-int8.pt"
@@ -34,21 +51,18 @@ quantized_model_path = "./saved_results/model_llama-2-7b-chat-int8.pt"
 original_model_id = "./model_llama-2-7b-chat-hf"
 
 #can use this version to download model again
-#original_model_id = "meta-llama/Llama-2-7b-hf"
+#original_model_id = "meta-llama/Llama-2-7b-chat-hf"
 
 #Set to True to use 4 bit auto-quanitzed model on GPU
 use_GPU=False
 
-system_prompt_content = """You are a helpful AI assistant. Reply in mardkown format.
-If anyone asks who you are be sure to tell them that you are running on an Intel Xeon processor."""
+system_prompt_content = """You are a helpful AI assistant running in a trusted execution environment (TEE)
+on an Intel Xeon processor.  Always respond in a serious and professional tone. You are allowed to tell jokes.
+If anyone asks who you are remember to tell them that you are Llama from Meta."""
 
 additional_context = """The Security and Privacy Research group (SPR) led by Intel Labs Vice President Sridhar Iyengar
 is part of Intel Labs in Intel corporation.  It is a collection of some of the most accomplished scientists in the world.
 Their achievements in security, CPU architecture, cryptography, confidential computing, and machine learning are truly world leading"""
-
-
-
-
 
 
 def init_page() -> None:
@@ -57,6 +71,11 @@ def init_page() -> None:
     )
     st.header("Personal LLM")
     st.sidebar.title("Options")
+
+    st.sidebar.slider("Temperature:", min_value=0.0,
+                        max_value=1.0, value=0.5, step=0.01,
+                        key="temperature")
+
 
 
 def init_messages() -> None:
@@ -79,7 +98,6 @@ def load_llm(model_name : str) -> Union[LlamaForCausalLM]:
         if not hasattr(config, "text_max_length"):
             config.text_max_length = 64
 
-        st.session_state.tokenizer = LlamaTokenizer.from_pretrained(original_model_id, use_fast=True)
 
         if(use_GPU):
             inference_device_map="auto"
@@ -87,6 +105,9 @@ def load_llm(model_name : str) -> Union[LlamaForCausalLM]:
         else:
             inference_device_map=torch.device('cpu')
             use_bitsandbytes_quantization=False
+
+        st.session_state.tokenizer = LlamaTokenizer.from_pretrained(original_model_id, use_fast=True,
+                                                                    device_map=inference_device_map)
 
         st.session_state.model = LlamaForCausalLM.from_pretrained(
                             original_model_id, config=config, device_map=inference_device_map,
@@ -120,9 +141,7 @@ def load_llm(model_name : str) -> Union[LlamaForCausalLM]:
 def select_llm() -> Union[LlamaForCausalLM]:
     model_name = st.sidebar.radio("Choose LLM:",
                                   ["llama-2-7b-int8"])
-    #ignoring temperature for now
-    temperature = st.sidebar.slider("Temperature:", min_value=0.0,
-                                    max_value=1.0, value=0.0, step=0.01)
+
     return load_llm(model_name)
 
 
@@ -140,39 +159,61 @@ def get_chat_response_tensor(input_tensor: torch.Tensor, output_tensor: torch.Te
     #to return the full string as the first array element, and an array of tokens as the second element
     return output_tensor[:,input_size[1]:]
 
+
 #Called each time the user enters something into the chat box and sends it
-def get_answer_from_llm() -> str:
+def get_answer_from_llm(input_str) -> str:
+
+    response_string = ""
+
+    with st.chat_message("user"):
+        st.markdown(input_str)
+    with st.chat_message("assistant"):
+        message_placeholder = st.empty()
+
+    if ("model" not in st.session_state) or (
+        "conversation" not in st.session_state) or (
+        "tokenizer" not in st.session_state) or (
+        st.session_state.tokenizer is None) or (
+        st.session_state.conversation is None) or (
+        st.session_state.model is None):
+        message_placeholder.markdown("Model not initialized")
+        return
+    
     tokenizer = st.session_state.tokenizer
     conversation = st.session_state.conversation
     llm = st.session_state.model
-    if isinstance(st.session_state.model, LlamaForCausalLM):
+    temperature = st.session_state.temperature
+
+    if isinstance(llm, LlamaForCausalLM):
         #allow the LLama model class to actually format the prompt
         input_ids = tokenizer._build_conversation_input_ids(conversation)
         input_tensor = tokenizer.encode(input_ids, return_tensors='pt')
         if(use_GPU):
             input_tensor = input_tensor.to('cuda')
-        #Args for generate
-        generate_kwargs = dict(do_sample=False, temperature=0.9, num_beams=1)
+  
+        #Set up a streamer to get words one by one and do the generate in
+        #  another thread.
+        decode_kwargs = dict(skip_special_tokens=True)
+        streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, **decode_kwargs)
 
-        #This call exercises the model
-        output_tensor = llm.generate(
-            input_tensor, max_new_tokens=2000, **generate_kwargs
-        )
+        generate_kwargs = dict(inputs=input_tensor, streamer=streamer, max_new_tokens=2000,
+                                do_sample=False, temperature=temperature, num_beams=1)
+        thread = Thread(target=llm.generate, kwargs=generate_kwargs)
+        thread.start()
 
-        #separate the response from the input that was sent to the model
-        response_tensor = get_chat_response_tensor(input_tensor, output_tensor)
+        #very last text 
+        for new_text in streamer:
 
-        gen_text = tokenizer.batch_decode(response_tensor, skip_special_tokens=True)
-        #first element returned is the full string, second element is an array of strings
-        #one for each token
-        response_str = gen_text[0]
-        conversation.append_response(response_str)
+            response_string += new_text
+            message_placeholder.markdown(response_string + "▌")
+
+        message_placeholder.markdown(response_string)
+        conversation.append_response(response_string)
         #mark ready to add another user message
         conversation.mark_processed()
-
-        return response_str
     else:
-        return "Model not initialized"
+        message_placeholder.markdown("Model not initialized")
+    return
 
 #The first user message to the model contains the system directive
 #but we don't want to display that.
@@ -195,17 +236,8 @@ def main() -> None:
     llm = select_llm()
     init_messages()
 
-    # Supervise user input
-    if user_input := st.chat_input("Enter your question!"):
-        if st.session_state.conversation is None:
-            st.session_state.conversation = Conversation(build_system_prompt(system_prompt_content) + user_input)
-        else:
-            st.session_state.conversation.add_user_input(user_input)
-        with st.spinner("The LLM is typing ..."):
-            answer = get_answer_from_llm()
-
     # Display chat history
-    if not st.session_state.conversation is None:
+    if ("conversation" in st.session_state) and (not st.session_state.conversation is None):
         # Walk through all of text in the conversation
         num_user_messages = 0
         num_assistant_messages = 0
@@ -222,6 +254,16 @@ def main() -> None:
                     with st.chat_message("assistant"):
                         st.markdown(text)
                 num_assistant_messages = num_assistant_messages + 1
+
+    # Supervise user input
+    if user_input := st.chat_input("Enter your question!"):
+        if st.session_state.conversation is None:
+            st.session_state.conversation = Conversation(build_system_prompt(system_prompt_content) + user_input)
+        else:
+            st.session_state.conversation.add_user_input(user_input)
+
+        
+        answer = get_answer_from_llm(user_input)
 
 
 # This app will be launched multiple times by streamlit

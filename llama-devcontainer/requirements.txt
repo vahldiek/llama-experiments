@@ -13,3 +13,4 @@ datasets
 accelerate
 sentencepiece
 parse
+timeit
