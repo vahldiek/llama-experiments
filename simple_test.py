@@ -9,7 +9,8 @@ from dotenv import load_dotenv
 from datasets import load_dataset
 from transformers import (LlamaTokenizer, LlamaTokenizerFast, AutoConfig, 
                             AutoModelForCausalLM, AutoTokenizer, pipeline,
-                            LlamaForCausalLM, LlamaModel, Conversation)
+                            LlamaForCausalLM, LlamaModel, Conversation,
+                            TextStreamer)
 
 import torch
 from torch.nn.functional import pad
@@ -28,7 +29,6 @@ from accelerate import init_empty_weights
 
 
 
-user_queries = ["tell me a joke", "write a poem about pirates", "what is snow?"]
 
 #use this version to load model from local directory
 original_model_id = "./model_llama-2-7b-chat-hf"
@@ -36,8 +36,8 @@ original_model_id = "./model_llama-2-7b-chat-hf"
 
 #Set quantized_model_path to None to just use the original model
 #quantized_model_path = "./saved_results/int8.pt"
-#quantized_model_path="./saved_results/model_llama-2-7b-chat-int8.pt"
-quantized_model_path=None
+quantized_model_path="./saved_results/model_llama-2-7b-chat-int8.pt"
+#quantized_model_path=None
 
 if quantized_model_path is None:
     use_GPU = True
@@ -90,38 +90,17 @@ if not (quantized_model_path is None):
 
 
 def query_model(input_tensor):
-    response_complete = False
-    tokens_per_round = 5
-    num_input_tokens = 0
-    num_output_tokens = 0
-    tokens_last_round = -1
-    num_accumulated_tokens = 0
-    last_answer_string_len = 0
+
     #Args for generate
     generate_kwargs = dict(do_sample=False, temperature=0.9, num_beams=1)
-
+    streamer = TextStreamer(tokenizer, skip_prompt=True)
     input_size = input_tensor.size()
     num_input_tokens = input_size[1]
-    num_accumulated_tokens = num_input_tokens
-    output_tensor = input_tensor
-    #Loop, loading a small number of tokens at a time and printing them
-    while (tokens_last_round == tokens_per_round) or (tokens_last_round == -1):
-        output_tensor = original_model.generate(
-            output_tensor, max_new_tokens=tokens_per_round, **generate_kwargs
-        )
-        output_size = output_tensor.size()
-        num_output_tokens = output_size[1]
 
-        #collect the new set of tokens to print
-        tokens_to_print = output_tensor[:,num_input_tokens:]
-        list_to_print = tokenizer.batch_decode(tokens_to_print, skip_special_tokens=True)
-        #Only print the characters added since we printed last time
-        print(list_to_print[0][last_answer_string_len:], end="")
-        last_answer_string_len = len(list_to_print[0])
-
-        #determine how many tokens we got this round and loop
-        tokens_last_round = num_output_tokens - num_accumulated_tokens
-        num_accumulated_tokens = num_output_tokens
+    output_tensor = original_model.generate(
+        input_tensor, max_new_tokens=2000, 
+        streamer=streamer, **generate_kwargs
+    )
 
     #Collect and return a string containing the entire answer
     chatbot_answer_tensor = output_tensor[:,num_input_tokens:]
@@ -130,8 +109,12 @@ def query_model(input_tensor):
     return chatbot_answer_str
 
 
-system_directive = "<<SYS>>\nYou are a helpful AI assistant. Reply in markown format.  If anyone asks who you are be sure to tell them that you are running on an Intel Xeon processor\n<</SYS>>\n\n"
-query_list = ["Hello my name is Anjo", "who are you?", "tell me about the SPR group at Intel", "tell me a joke"]
+system_directive = """<<SYS>>\nYou are a helpful AI assistant, alwasy respond in a serious and professional tone.
+If anyone asks who you are be sure to tell them that you are running on an Intel Xeon processor and remember to tell
+them that you are Llama.\n<</SYS>>\n\n"""
+
+
+query_list = ["Hello my name is Anjo", "who are you?", "tell me about Intel corproation", "tell me a joke"]
 
 
 #Below should be in a function, but a bit confusing to figure out how to use timeit internally that way
