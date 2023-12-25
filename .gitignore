@@ -4,4 +4,9 @@ model_llama-2-7b-chat-hf/
 model_llama-2-7b-hf/
 data/
 saved_results/
+chroma/
+chroma_db/
+all-mpnet-base-v2/
+
+
 
