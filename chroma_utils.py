@@ -110,7 +110,10 @@ def add_files_to_vector_store(vector_store, path):
     for filename in os.listdir(path):
         large_docs = None
         file_path = os.path.join(path, filename)
-        if not file_in_collection(vector_store, file_path):
+        #recurse if we hit another directory
+        if os.path.isdir(file_path):
+            add_files_to_vector_store(vector_store, str(file_path))
+        elif not file_in_collection(vector_store, file_path):
             print(f"Adding file {file_path}")
             if filename.endswith('.md') or filename.endswith('.MD'):
                 with open(file_path) as f:
@@ -127,9 +130,11 @@ def add_files_to_vector_store(vector_store, path):
                 large_docs = text_loader.load()
             if large_docs is not None:
                 text_splits = text_splitter.split_documents(large_docs)
-                text = [document.page_content for document in text_splits]
-                metadata = [document.metadata for document in text_splits]
-                vector_store.add_texts(text, metadata)
+                #file could have all whitespace
+                if(len(text_splits) > 0):
+                    text = [document.page_content for document in text_splits]
+                    metadata = [document.metadata for document in text_splits]
+                    vector_store.add_texts(text, metadata)
         else:
             print(f"File {file_path} already found")
 
