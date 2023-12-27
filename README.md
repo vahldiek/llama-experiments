@@ -29,4 +29,5 @@ even if the development container is rebuilt.
 
 ## Retrieval Augmented Generation (RAG)
 The scripts can optionally attampt to find relevant content by first querying a Chroma in-memory vector database, and sending this content along to the
-LLM.  Options in `.llama_config.toml` enable or disable this feature.
+LLM.  Options in `.llama_config.toml` enable or disable this feature.  Executing the script `reset_RAG_database.py` will build or rebuild the database
+using the data file directory speficied in the configuration file.
