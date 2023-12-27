@@ -17,3 +17,5 @@ accelerate
 sentencepiece
 sentence_transformers
 parse
+pypdf
+langchain-experimental

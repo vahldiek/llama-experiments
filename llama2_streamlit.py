@@ -26,50 +26,23 @@ import streamlit as st
 import intel_extension_for_pytorch as ipex
 from parse import *
 import pathlib
+import sys
+import json
+
+#Import local modules
+import llama_utils
+import chroma_utils
 
 
-parser = argparse.ArgumentParser("LLama for streamlit", add_help=True)
-parser.add_argument(
-    "--quantized-model-path", default="./saved_results/best_model.pt",
-    type=str,
-    help="low precision mode for weight only quantization. "
-         "It indicates data type for computation for speedup at the cost "
-         "of accuracy. Unrelated to activation or weight data type."
-         "It is not supported yet to use lowp_mode=INT8 for INT8 weight, "
-         "falling back to lowp_mode=BF16 implicitly in this case."
-         "If set to AUTO, lowp_mode is determined by weight data type: "
-         "lowp_mode=BF16 is used for INT8 weight "
-         "and lowp_mode=INT8 used for INT4 weight",
-)
 
-#This is the model quantized by the Intel tools
-quantized_model_path = "./saved_results/model_llama-2-7b-chat-int8.pt"
-#Set to None to bypass loading the quantized model
-#quantized_model_path = None
 
-#use this version to load model from local directory
-original_model_id = "./model_llama-2-7b-chat-hf"
-
-#can use this version to download model again
-#original_model_id = "meta-llama/Llama-2-7b-chat-hf"
-
-#Set to True to use 4 bit auto-quanitzed model on GPU
-use_GPU=False
-
-system_prompt_content = """You are a helpful AI assistant running in a trusted execution environment (TEE)
-on an Intel Xeon processor.  Always respond in a serious and professional tone. You are allowed to tell jokes.
-If anyone asks who you are remember to tell them that you are Llama from Meta."""
-
-additional_context = """The Security and Privacy Research group (SPR) led by Intel Labs Vice President Sridhar Iyengar
-is part of Intel Labs in Intel corporation.  It is a collection of some of the most accomplished scientists in the world.
-Their achievements in security, CPU architecture, cryptography, confidential computing, and machine learning are truly world leading"""
 
 
 def init_page() -> None:
     st.set_page_config(
-        page_title="Personal LLM"
+        page_title=st.session_state.llama_config.chat_page_name
     )
-    st.header("Personal LLM")
+    st.header(st.session_state.llama_config.chat_page_name)
     st.sidebar.title("Options")
 
     st.sidebar.slider("Temperature:", min_value=0.0,
@@ -83,9 +56,8 @@ def init_messages() -> None:
     if clear_button or "conversation" not in st.session_state:
         #In the initial conversation set the system prompt and set additional context, sort of a poor-man's
         #RAG
-        st.session_state.conversation = Conversation(build_system_prompt(system_prompt_content) + "set context")
-        st.session_state.conversation.append_response(additional_context)
-        st.session_state.conversation.mark_processed()
+        st.session_state.conversation = None
+        st.session_state.user_messages = []
 
 
 
@@ -94,44 +66,8 @@ def init_messages() -> None:
 @st.cache_resource
 def load_llm(model_name : str) -> Union[LlamaForCausalLM]:
     if model_name.startswith("llama-2-"):
-        config = AutoConfig.from_pretrained(original_model_id, torchscript=True)
-        if not hasattr(config, "text_max_length"):
-            config.text_max_length = 64
-
-
-        if(use_GPU):
-            inference_device_map="auto"
-            use_bitsandbytes_quantization=True
-        else:
-            inference_device_map=torch.device('cpu')
-            use_bitsandbytes_quantization=False
-
-        st.session_state.tokenizer = LlamaTokenizer.from_pretrained(original_model_id, use_fast=True,
-                                                                    device_map=inference_device_map)
-
-        st.session_state.model = LlamaForCausalLM.from_pretrained(
-                            original_model_id, config=config, device_map=inference_device_map,
-                            load_in_4bit=use_bitsandbytes_quantization)
-            
-        #Load the Intel quantized model if not using GPU
-        if (not use_GPU) and not (quantized_model_path is None):
-            #begin optimization for using Intel quantized model
-            torch._C._jit_set_texpr_fuser_enabled(False)
-            qconfig = ipex.quantization.default_static_qconfig_mapping
-            st.session_state.model = ipex.optimize_transformers(
-                st.session_state.model.eval(),
-                dtype=torch.float,
-                inplace=True,
-                quantization_config=qconfig,
-                deployment_mode=False,
-            )
-
-            #Load the Intel quantized model
-            self_jit = torch.jit.load(quantized_model_path)
-            self_jit = torch.jit.freeze(self_jit.eval())
-            #Not sure exactly what this does.  Swaps in the quantized model for the original?
-            ipex._set_optimized_model_for_generation(st.session_state.model, optimized_model=self_jit)
-
+        st.session_state.model, st.session_state.tokenizer = llama_utils.load_optimized_model(
+                                                                st.session_state.llama_config)
         return st.session_state.model
     else:
         return None
@@ -140,7 +76,7 @@ def load_llm(model_name : str) -> Union[LlamaForCausalLM]:
 #Select a model using the radio buttons
 def select_llm() -> Union[LlamaForCausalLM]:
     model_name = st.sidebar.radio("Choose LLM:",
-                                  ["llama-2-7b-int8"])
+                                  ["llama-2-7b-chat-int8"])
 
     return load_llm(model_name)
 
@@ -161,12 +97,12 @@ def get_chat_response_tensor(input_tensor: torch.Tensor, output_tensor: torch.Te
 
 
 #Called each time the user enters something into the chat box and sends it
-def get_answer_from_llm(input_str) -> str:
+def get_answer_from_llm(user_input) -> str:
 
     response_string = ""
 
     with st.chat_message("user"):
-        st.markdown(input_str)
+        st.markdown(user_input)
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
 
@@ -188,7 +124,7 @@ def get_answer_from_llm(input_str) -> str:
         #allow the LLama model class to actually format the prompt
         input_ids = tokenizer._build_conversation_input_ids(conversation)
         input_tensor = tokenizer.encode(input_ids, return_tensors='pt')
-        if(use_GPU):
+        if(st.session_state.llama_config.use_GPU):
             input_tensor = input_tensor.to('cuda')
   
         #Set up a streamer to get words one by one and do the generate in
@@ -226,41 +162,60 @@ def remove_system_prompt_preamble(input_str: str):
     else:
         return input_str
 
+#Only call this function once
+@st.cache_resource
+def init_rag():
+    if ("vector_store" not in st.session_state):
+        if st.session_state.llama_config.use_RAG:
+            st.session_state.vector_store = chroma_utils.get_vector_store(st.session_state.llama_config)
+        else:
+            st.session_state.vector_store = None
 
 
 #main function.  This script is launched multiple times by streamlit
 def main() -> None:
     _ = load_dotenv()
 
+    config = llama_utils.read_config()
+    if "llama_config" not in st.session_state:
+        st.session_state.llama_config = config
     init_page()
+    init_rag()
     llm = select_llm()
     init_messages()
 
     # Display chat history
     if ("conversation" in st.session_state) and (not st.session_state.conversation is None):
         # Walk through all of text in the conversation
-        num_user_messages = 0
-        num_assistant_messages = 0
+        current_user_message = 0
         for is_user, text in st.session_state.conversation.iter_texts():
             if is_user:
-                #Skip the first user message because that just sets the system prompt
-                if num_user_messages > 0:
-                    with st.chat_message("user"):
-                        st.markdown(text)
-                num_user_messages = num_user_messages + 1
+                with st.chat_message("user"):
+                    #Use messages from here since full messages may be augmented with
+                    #RAG data
+                    st.markdown(st.session_state.user_messages[current_user_message])
+                    current_user_message = current_user_message + 1
             else:
-                #Skip the first assistant message since that only sets context
-                if num_assistant_messages > 0:
-                    with st.chat_message("assistant"):
-                        st.markdown(text)
-                num_assistant_messages = num_assistant_messages + 1
+                with st.chat_message("assistant"):
+                    st.markdown(text)
+
 
     # Supervise user input
     if user_input := st.chat_input("Enter your question!"):
+        #Augment the query with information from the vector store if needed
+        if config.use_RAG:
+            full_query = llama_utils.merge_rag_results(st.session_state.vector_store, user_input, config)
+        else:
+            full_query = user_input
+        print("*******************************************")
+        print(full_query)
+        print("*******************************************")
         if st.session_state.conversation is None:
-            st.session_state.conversation = Conversation(build_system_prompt(system_prompt_content) + user_input)
+            st.session_state.conversation = Conversation(build_system_prompt(st.session_state.llama_config.llm_system_prompt) + full_query)
+            st.session_state.user_messages = [user_input]
         else:
             st.session_state.conversation.add_user_input(user_input)
+            st.session_state.user_messages.append(user_input)
 
         
         answer = get_answer_from_llm(user_input)

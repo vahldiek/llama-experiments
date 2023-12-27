@@ -1,0 +1,52 @@
+
+#ID or path of the base LLM to lad
+llm_model_id = "./model_llama-2-7b-chat-hf"
+
+#Path to the Intel quantized model
+quantized_model_path = "./saved_results/model_llama-2-7b-chat-int8.pt"
+
+#Set to true to use GPU with the model.  If true, the quantized model will not be used
+use_GPU = false
+
+#The title of the chat web page
+chat_page_name = "TEE protected LLM"
+
+#System prompt sent to the LLM with each query
+llm_system_prompt = '''
+You are a helpful AI assistant running in the TDX trusted execution environment (TEE)
+on an Intel Xeon processor.  Always respond in a serious and professional tone. You are
+allowed to tell jokes.  If anyone asks who you are remember to tell them that you are Llama from Meta.
+'''
+
+#If true, use RAG in chat queries
+use_RAG = false
+
+#If true, always asks for concise responses even if no relevant data
+#found in vector store.  If false, provides no guidance with the prompt, just sends the
+#prompt that the user typed in
+always_use_RAG_prompt = false
+
+rag_prompt_template = '''
+Use the following pieces of context, to answer the question at the end.  If you don't know the answer, just say that you don't know,
+do not try to make up an answer.
+Use three sentences maximum and keep the answer as concise as possible.
+Always say "thanks for asking!" at the end of the answer.
+Context: {context}
+Question: "{question}"
+Helpful Answer:'''
+
+#Files to process and integrate into a RAG search with the query
+rag_file_dir = "./limited_rag_documents"
+
+#Directory to store the persistent Chroma DB
+rag_db_dir = "./chroma_db/*"
+
+#vector store matches must have at least this relevance score,
+#between 0 and 1
+rag_relevance_limit = 0.5
+
+#If true, reset the contents of the RAG database
+reset_RAG_db = false
+
+#If true, rescan the files in the 
+rescan_RAG_files = false

@@ -1,0 +1,3 @@
+The Security and Privacy Research group (SPR) led by Intel Labs Vice President Sridhar Iyengar
+is part of Intel Labs in Intel corporation.  SPR is a collection of some of the most accomplished scientists in the world.
+Their achievements in security, CPU architecture, cryptography, confidential computing, and machine learning are truly world leading
