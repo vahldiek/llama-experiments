@@ -58,6 +58,8 @@ def init_messages() -> None:
         #RAG
         st.session_state.conversation = None
         st.session_state.user_messages = []
+        #reread the configuration file in case any changes were made
+        st.session_state.llama_config = llama_utils.read_config()
 
 
 
@@ -176,12 +178,14 @@ def init_rag():
 def main() -> None:
     _ = load_dotenv()
 
-    config = llama_utils.read_config()
+
     if "llama_config" not in st.session_state:
-        st.session_state.llama_config = config
+        st.session_state.llama_config = llama_utils.read_config()
+    config = st.session_state.llama_config
     init_page()
     init_rag()
-    llm = select_llm()
+    #load the default LLM
+    load_llm("llama-2-7b-chat-int8")
     init_messages()
 
     # Display chat history
@@ -210,7 +214,7 @@ def main() -> None:
         print("*******************************************")
         print(full_query)
         print("*******************************************")
-        if st.session_state.conversation is None:
+        if (st.session_state.conversation is None) or (not config.use_conversation_history):
             st.session_state.conversation = Conversation(build_system_prompt(st.session_state.llama_config.llm_system_prompt) + full_query)
             st.session_state.user_messages = [user_input]
         else:

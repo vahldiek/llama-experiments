@@ -18,6 +18,10 @@ on an Intel Xeon processor.  Always respond in a serious and professional tone. 
 allowed to tell jokes.  If anyone asks who you are remember to tell them that you are Llama from Meta.
 '''
 
+#If true, the LLM will use conversation history, if false, it will
+#only answer one question at a time
+use_conversation_history = true
+
 #If true, use RAG in chat queries
 use_RAG = false
 
@@ -27,7 +31,7 @@ use_RAG = false
 always_use_RAG_prompt = false
 
 rag_prompt_template = '''
-Use the following pieces of context, to answer the question at the end.  If you don't know the answer, just say that you don't know,
+Use the following pieces of context to answer the question at the end.  If you don't know the answer, say that you don't know,
 do not try to make up an answer.
 Use three sentences maximum and keep the answer as concise as possible.
 Always say "thanks for asking!" at the end of the answer.
@@ -37,6 +41,7 @@ Helpful Answer:'''
 
 #Files to process and integrate into a RAG search with the query
 rag_file_dir = "./limited_rag_documents"
+#rag_file_dir = "./expansive_rag_documents"
 
 #Directory to store the persistent Chroma DB
 rag_db_dir = "./chroma_db/*"
@@ -44,6 +49,12 @@ rag_db_dir = "./chroma_db/*"
 #vector store matches must have at least this relevance score,
 #between 0 and 1
 rag_relevance_limit = 0.5
+
+#Maximum number of characters when splitting docs for RAG
+rag_doc_max_chars = 512
+
+#Maximum number of RAG documetns to include in prompt
+max_rag_documents = 2
 
 #If true, reset the contents of the RAG database
 reset_RAG_db = false

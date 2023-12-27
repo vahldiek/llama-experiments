@@ -70,6 +70,8 @@ def read_config():
         config['quantized_model_path'] = None
     if "use_GPU" not in config:
         config.use_GPU = False
+    if "use_conversation_history" not in config:
+        config.use_conversation_history = True
     if "rag_file_dir" not in config:
         config.rag_file_dir = None
     if "rag_db_dir" not in config:
@@ -84,6 +86,10 @@ def read_config():
         config.rescan_RAG_files = False
     if "rag_relevance_limit" not in config:
         config.rag_relevance_limit = 0.5
+    if "rag_doc_max_chars" not in config:
+        config.rag_doc_max_chars = 256
+    if "max_rag_documents" not in config:
+        config.max_rag_documents = 3
 
     #check for arg consistency
     if config.use_GPU:
@@ -223,7 +229,7 @@ def format_docs(docs):
 def merge_rag_results(vector_store, query, llama_config):
     #Only receive results if the similarity is above the threshold
     retriever = vector_store.as_retriever(search_type="similarity_score_threshold",
-                                        search_kwargs={'k': 10, 'score_threshold' : llama_config.rag_relevance_limit})
+                                        search_kwargs={'k': llama_config.max_rag_documents, 'score_threshold' : llama_config.rag_relevance_limit})
     docs = retriever.invoke(query)
     #If no local docs met the similarity threshold, 
     if(len(docs) == 0):

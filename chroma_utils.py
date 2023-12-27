@@ -70,7 +70,7 @@ def get_vector_store(llama_config, rescan_dir=False, reset_db=False):
                             embedding_function=embeddings, persist_directory=llama_config.rag_db_dir)
     
     if rescan_dir:
-        add_files_to_vector_store(vector_store, llama_config.rag_file_dir)
+        add_files_to_vector_store(vector_store, llama_config.rag_file_dir, llama_config)
 
     return vector_store
 
@@ -89,7 +89,7 @@ def add_metadata(docs : List[Document], data : dict):
 
 # check if the database exists already
 # if not, create it, otherwise read from the database
-def add_files_to_vector_store(vector_store, path):
+def add_files_to_vector_store(vector_store, path, llama_config):
 
     print("Creating database")
     headers_to_split_on = [
@@ -99,7 +99,7 @@ def add_files_to_vector_store(vector_store, path):
     ]
     markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size = 512,
+        chunk_size = llama_config.rag_doc_max_chars,
         chunk_overlap  = 20,
         length_function = len,
         is_separator_regex = False,
@@ -112,7 +112,7 @@ def add_files_to_vector_store(vector_store, path):
         file_path = os.path.join(path, filename)
         #recurse if we hit another directory
         if os.path.isdir(file_path):
-            add_files_to_vector_store(vector_store, str(file_path))
+            add_files_to_vector_store(vector_store, str(file_path), llama_config)
         elif not file_in_collection(vector_store, file_path):
             print(f"Adding file {file_path}")
             if filename.endswith('.md') or filename.endswith('.MD'):
