@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 import llama_utils
 import chroma_utils
+import logging
+
+logging.getLogger('llama2_streamlit').setLevel(logging.DEBUG)
 
 config = llama_utils.read_config()
 
