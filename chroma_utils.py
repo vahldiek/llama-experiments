@@ -20,12 +20,13 @@ from langchain.schema import StrOutputParser
 import llama_utils
 from langchain.llms.huggingface_pipeline import HuggingFacePipeline
 from langchain_experimental.chat_models import Llama2Chat
+import logging
 
 sentence_transformer_model="all-MiniLM-L6-v2"
 _ = load_dotenv()
 
 RAG_COLLECTION_NAME = "Transcripts_Store"
-
+logger = logging.getLogger('llama2_streamlit.chroma_utils')
 
 
 
@@ -91,7 +92,7 @@ def add_metadata(docs : List[Document], data : dict):
 # if not, create it, otherwise read from the database
 def add_files_to_vector_store(vector_store, path, llama_config):
 
-    print("Creating database")
+    logger.debug("Creating database")
     headers_to_split_on = [
     ("#", "Header 1"),
     ("##", "Header 2"),
@@ -114,7 +115,7 @@ def add_files_to_vector_store(vector_store, path, llama_config):
         if os.path.isdir(file_path):
             add_files_to_vector_store(vector_store, str(file_path), llama_config)
         elif not file_in_collection(vector_store, file_path):
-            print(f"Adding file {file_path}")
+            logger.debug(f"Adding file {file_path}")
             if filename.endswith('.md') or filename.endswith('.MD'):
                 with open(file_path) as f:
                     large_docs = markdown_splitter.split_text(f.read())
@@ -136,7 +137,7 @@ def add_files_to_vector_store(vector_store, path, llama_config):
                     metadata = [document.metadata for document in text_splits]
                     vector_store.add_texts(text, metadata)
         else:
-            print(f"File {file_path} already found")
+            logger.debug(f"File {file_path} already found")
 
 
 

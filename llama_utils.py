@@ -28,10 +28,12 @@ import intel_extension_for_pytorch as ipex
 from accelerate import init_empty_weights
 import toml
 import sys
+import logging
 
 
 
 DEFAULT_CONFIG_FILE = "./.llama2_config.toml"
+logger = logging.getLogger('llama2_streamlit.llama_utils')
 
 
 class dotdict(dict):
@@ -55,16 +57,16 @@ def read_config():
             conf = toml.load(f)
             config = dotdict(conf)
     else:
-        print("Configuration file required.")
+        logger.error("Configuration file required.")
         exit(1)
 
     #Verify all of the needed configurations are there
     #or set to defaults
     if "llm_model_id" not in config:
-        print("missing llm_model_id in conifguration")
+        logger.error("missing llm_model_id in conifguration")
         exit(1)
     if "llm_system_prompt" not in config:
-        print("missing llm_system_prompt in conifguration")
+        logger.error("missing llm_system_prompt in conifguration")
         exit(1)
     if "quantized_model_path" not in config:
         config['quantized_model_path'] = None
@@ -72,6 +74,10 @@ def read_config():
         config.use_GPU = False
     if "use_conversation_history" not in config:
         config.use_conversation_history = True
+    if "max_response_tokens" not in config:
+        config.max_response_tokens = 500
+    if "max_prompt_tokens" not in config:
+        config.max_prompt_tokens = 1000
     if "rag_file_dir" not in config:
         config.rag_file_dir = None
     if "rag_db_dir" not in config:
@@ -96,7 +102,7 @@ def read_config():
         config.quantized_model_path = None
 
     if config.use_RAG and ((config.rag_file_dir is None) or (config.rag_db_dir is None)):
-        print("When using rag, must set rag_file_dir and rag_db_dir in configuration")
+        logger.error("When using rag, must set rag_file_dir and rag_db_dir in configuration")
         exit(1)
 
     return config
@@ -202,7 +208,7 @@ def send_model_queries(model, tokenizer, query_list, llama_config, time_queries=
         else:
             conv.add_user_input(query_list[i])
 
-        print("Sending query to model: " + query_list[i])
+        logger.debug("Sending query to model: " + query_list[i])
         input_ids = tokenizer._build_conversation_input_ids(conv)
         input_tensor = tokenizer.encode(input_ids, return_tensors='pt')
         if(llama_config.use_GPU):
@@ -212,12 +218,12 @@ def send_model_queries(model, tokenizer, query_list, llama_config, time_queries=
         g_input_tensor = input_tensor
         g_model = model
         g_tokenizer = tokenizer
-        print("***********************************************************************************")
+        logger.debug("***********************************************************************************")
         elapsed_time = timeit.timeit('g_results.append(query_model(g_model, g_tokenizer, g_input_tensor))',
                                                     setup='from llama_utils import query_model, g_model, g_tokenizer, g_results, g_input_tensor', number=1)
-        print("\n***********************************************************************************")
+        logger.debug("\n***********************************************************************************")
         if time_queries:
-            print(f"Query took {elapsed_time} seconds")
+            logger.info(f"Query took {elapsed_time} seconds")
 
         chatbot_answer_str = g_results[i]
         conv.append_response(chatbot_answer_str)
@@ -233,20 +239,18 @@ def merge_rag_results(vector_store, query, llama_config):
     docs = retriever.invoke(query)
     #If no local docs met the similarity threshold, 
     if(len(docs) == 0):
-        print(f"+++ No relevant RAG docs found for \"{query}\"+++")
+        logger.debug(f"+++ No relevant RAG docs found for \"{query}\"+++")
         if(llama_config.always_use_RAG_prompt):
             full_query = llama_config.rag_prompt_template.format(context="None", question=query)
         else:
             full_query = query
     else:
-        print(f"%%%%% found rag docs for \"{query}\"")
+        logger.debug(f"%%%%% found rag docs for \"{query}\"")
         #merge the results into one string
         context = format_docs(docs)
         full_query = llama_config.rag_prompt_template.format(context=context, question=query)
 
     return full_query
-
-
 
 
 #Use this trick with globals to use timeit with function, makes the function certainly not thread safe
@@ -274,7 +278,7 @@ def send_rag_queries(vector_store, model, tokenizer, query_list, llama_config, t
         else:
             conv.add_user_input(query)
 
-        print("Sending query to model: " + query)
+        logger.debug("Sending query to model: " + query)
         input_ids = tokenizer._build_conversation_input_ids(conv)
         input_tensor = tokenizer.encode(input_ids, return_tensors='pt')
         if(llama_config.use_GPU):
@@ -284,12 +288,12 @@ def send_rag_queries(vector_store, model, tokenizer, query_list, llama_config, t
         g_input_tensor = input_tensor
         g_model = model
         g_tokenizer = tokenizer
-        print("***********************************************************************************")
+        logger.debug("***********************************************************************************")
         elapsed_time = timeit.timeit('g_results.append(query_model(g_model, g_tokenizer, g_input_tensor))',
                                                     setup='from llama_utils import query_model, g_model, g_tokenizer, g_results, g_input_tensor', number=1)
-        print("\n***********************************************************************************")
+        logger.debug("\n***********************************************************************************")
         if time_queries:
-            print(f"Query took {elapsed_time} seconds")
+            logger.info(f"Query took {elapsed_time} seconds")
 
         chatbot_answer_str = g_results[i]
         conv.append_response(chatbot_answer_str)

@@ -13,14 +13,21 @@ chat_page_name = "TEE protected LLM"
 
 #System prompt sent to the LLM with each query
 llm_system_prompt = '''
-You are a helpful AI assistant running in the TDX trusted execution environment (TEE)
-on an Intel Xeon processor.  Always respond in a serious and professional tone. You are
-allowed to tell jokes.  If anyone asks who you are remember to tell them that you are Llama from Meta.
+You are the helpful Llama AI assistant running in the TDX trusted execution environment (TEE)
+on an Intel Xeon processor.  Always respond in a serious and professional tone.
 '''
 
 #If true, the LLM will use conversation history, if false, it will
 #only answer one question at a time
 use_conversation_history = true
+
+#Maximum number of response tokens the LLM is allowed to return before
+#stopping
+max_response_tokens = 500
+
+#Maximum number of tokens to send to LLM.  If tokens becomes larger
+#than this, older rounds of the conversation are pruned off.
+max_prompt_tokens = 1000
 
 #If true, use RAG in chat queries
 use_RAG = false
