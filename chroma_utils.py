@@ -146,7 +146,7 @@ def main():
 
 
     config = llama_utils.read_config()
-
+    logger.setLevel(logging.DEBUG)
 
     vector_store = get_vector_store(config, config.rescan_RAG_files, config.reset_RAG_db)
     #Here higher is better

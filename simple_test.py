@@ -1,10 +1,10 @@
 import llama_utils
 from dotenv import load_dotenv
 from transformers import (PreTrainedModel, PreTrainedTokenizer)
-
+import logging
 
 config = llama_utils.read_config()
-
+logging.getLogger('llama2_streamlit').setLevel(logging.DEBUG)
 
 example_context = """The Security and Privacy Research group (SPR) led by Intel Labs Vice President Sridhar Iyengar
 is part of Intel Labs in Intel corporation.  It is a collection of some of the most accomplished scientists in the world.
