@@ -15,7 +15,7 @@ from threading import Thread
 from datasets import load_dataset
 from transformers import  (LlamaTokenizer, AutoConfig, AutoModelForCausalLM,
                             AutoTokenizer, pipeline, LlamaForCausalLM,
-                            Conversation, TextIteratorStreamer)
+                            Conversation, TextIteratorStreamer, PreTrainedModel)
 
 import torch
 from torch.nn.functional import pad
@@ -33,6 +33,7 @@ import json
 #Import local modules
 import llama_utils
 import chroma_utils
+from token_conversation import TokenConversation
 
 
 
@@ -54,21 +55,17 @@ def init_page() -> None:
 
 def init_messages() -> None:
     clear_button = st.sidebar.button("Clear Conversation", key="clear")
-    if clear_button or "conversation" not in st.session_state:
-        #In the initial conversation set the system prompt and set additional context, sort of a poor-man's
-        #RAG
-        st.session_state.conversation = None
-        st.session_state.user_messages = []
+    if clear_button or "llama_config" not in st.session_state:
         #reread the configuration file in case any changes were made
         st.session_state.llama_config = llama_utils.read_config()
-
-        #reset the token counting state as well
-        #One dimensional list so it can be updated by generate worker thread
-        st.session_state.total_prompt_tokens = [0]
-        st.session_state.user_tokens_per_query = []
-        st.session_state.answer_tokens_per_query = []
-        #This will be remeasured when the next user query it sent
-        st.session_state.system_prompt_tokens = 0
+    if clear_button or "user_messages" not in st.session_state:
+        st.session_state.user_messages = []
+    #If the tokenizer has been loaded, reset the conversation
+    #otherwise the conversation will be reset once the tokenizer is loaded
+    if clear_button and "tokenizer" in st.session_state:
+        st.session_state.conversation = TokenConversation(st.session_state.tokenizer,
+                                                   st.session_state.llama_config.llm_system_prompt,
+                                                   st.session_state.llama_config.max_prompt_tokens)
 
 
 
@@ -79,6 +76,14 @@ def load_llm(model_name : str) -> Union[LlamaForCausalLM]:
     if model_name.startswith("llama-2-"):
         st.session_state.model, st.session_state.tokenizer = llama_utils.load_optimized_model(
                                                                 st.session_state.llama_config)
+        if "conversation" in st.session_state:
+            st.session_state.conversation.reset_config(st.session_state.tokenizer,
+                                                            st.session_state.llama_config.llm_system_prompt,
+                                                            st.session_state.llama_config.max_prompt_tokens)
+        else:
+            st.session_state.conversation = TokenConversation(st.session_state.tokenizer,
+                                                            st.session_state.llama_config.llm_system_prompt,
+                                                            st.session_state.llama_config.max_prompt_tokens)
         return st.session_state.model
     else:
         return None
@@ -92,11 +97,6 @@ def select_llm() -> Union[LlamaForCausalLM]:
     return load_llm(model_name)
 
 
-#Add appropriate tags around system prompt
-def build_system_prompt(prompt_content: str):
-    system_begin = "<<SYS>>\n "
-    system_end = "\n<</SYS>>\n\n"
-    return system_begin + prompt_content + system_end
 
 #Retrieve only the tokens received following what was input to the model
 def get_chat_response_tensor(input_tensor: torch.Tensor, output_tensor: torch.Tensor) -> torch.Tensor:
@@ -107,98 +107,17 @@ def get_chat_response_tensor(input_tensor: torch.Tensor, output_tensor: torch.Te
     return output_tensor[:,input_size[1]:]
 
 
-#Update queues tracking the tokens used for each input and prune off early conversation elements if
-#conversation has become too long
-def rightsize_conversation(input_tensor):
-    tokenizer = st.session_state.tokenizer
-    conversation = st.session_state.conversation
-    have_previous_data = (not conversation.past_user_inputs is None) and (len(conversation.past_user_inputs) > 0)
-
-    #Init the token counting state variables if necessary
-    if "total_prompt_tokens" not in st.session_state:
-        #This is a single element list so it can be updated from the generate worker thread
-        st.session_state.total_prompt_tokens = [0]
-        st.session_state.user_tokens_per_query = []
-        st.session_state.answer_tokens_per_query = []
-    #remeasure the system prompt tokens if necessary
-    if ("system_prompt_tokens" not in st.session_state) or (st.session_state.system_prompt_tokens==0):
-        full_system_prompt = build_system_prompt(st.session_state.llama_config.llm_system_prompt)
-        system_prompt_tokens = tokenizer.encode(full_system_prompt, return_tensors='pt')
-        #Determine the length of the system prompt
-        st.session_state.system_prompt_tokens = len(system_prompt_tokens[0])
-    
-    new_total_tokens = len(input_tensor[0])
-    #Don't count the system tokens against this user prompt
-    tokens_added = new_total_tokens - st.session_state.total_prompt_tokens[0]
-
-    #Append the number of tokens for this query
-    st.session_state.user_tokens_per_query.append(tokens_added)
-
-    #If we are under the allowed tokens or if we only have this one request just return the input tensor
-    if (new_total_tokens <= st.session_state.llama_config.max_prompt_tokens) or not have_previous_data:
-        st.session_state.logger.debug(f"Sending {new_total_tokens} tokens")
-        st.session_state.total_prompt_tokens[0] = new_total_tokens
-        return input_tensor
-    
-    st.session_state.logger.info(f"&&&& Request to send {new_total_tokens} tokens, must be pruned &&&&")
-    #otherwise, we need to start pruning old elements from the conversation
-    #until we get under the limit
-    #count the number of request/response pairs that we need to prune
-    i=0
-    #Use answers for length because user queries should be one larger at this point
-    while (new_total_tokens > st.session_state.llama_config.max_prompt_tokens) and (
-        i < len(st.session_state.answer_tokens_per_query)):
-        round_tokens = (st.session_state.user_tokens_per_query[i] +
-                                               st.session_state.answer_tokens_per_query[i])
-        new_total_tokens = new_total_tokens - round_tokens
-        i = i+1
-    st.session_state.logger.debug(f"pruned {i} conversation rounds")
-
-    #Adjust our stored length vectors
-    st.session_state.user_tokens_per_query = st.session_state.user_tokens_per_query[i:]
-    st.session_state.answer_tokens_per_query = st.session_state.answer_tokens_per_query[i:]
-
-    new_conversation = Conversation()
-    trimmed_responses = conversation.generated_responses[i:]
-    trimmed_inputs = conversation.past_user_inputs[i:]
-    
-    #Add the system prompt to the first new input
-    trimmed_inputs[0] = build_system_prompt(st.session_state.llama_config.llm_system_prompt) + trimmed_inputs[0]
-    #Add the old trimmed inputs and responses to the new conversation
-    for input, response in zip(trimmed_inputs, trimmed_responses):
-        new_conversation.add_user_input(input)
-        new_conversation.append_response(response)
-        new_conversation.mark_processed()
-
-    #Add the current request to the conversation
-    new_conversation.add_user_input(conversation.new_user_input)
-
-    #update the conversation
-    st.session_state.conversation = new_conversation
-
-    #finally build new input ids and return a new tensor
-    input_ids = tokenizer._build_conversation_input_ids(new_conversation)
-    input_tensor = tokenizer.encode(input_ids, return_tensors='pt')
-    new_total_tokens = len(input_tensor[0])
-    #Will be updated again once response is received
-    st.session_state.total_prompt_tokens[0] = new_total_tokens
-    st.session_state.logger.debug("reduced to {} tokens".format(new_total_tokens))
-    return input_tensor
 
 
 #Call generate and count the number of new tokens
-def generate_and_count(model, answer_list, total_prompt_tokens, inputs, streamer, max_new_tokens, do_sample, temperature, num_beams):
-    generate_kwargs = dict(inputs=inputs, streamer=streamer, max_new_tokens=max_new_tokens,
-                        do_sample=do_sample, temperature=temperature, num_beams=num_beams)
+def generate_and_add(model : PreTrainedModel,
+                     conversation : TokenConversation,
+                     generate_kwargs) -> str:
+
     
     output_tensor = model.generate(**generate_kwargs)
-    new_total_tokens = len(output_tensor[0])
-    answer_len = new_total_tokens - len(inputs[0])
+    return conversation.append_response_from_tokens(output_tensor)
 
-    #Append the length of the answer so we can use it for pruning if necessary later
-    answer_list.append(answer_len)
-    total_prompt_tokens[0] = new_total_tokens
-    return output_tensor
 
 
 
@@ -222,12 +141,12 @@ def send_prompt_to_llm(input_tensor)  -> str:
     decode_kwargs = dict(skip_special_tokens=True)
     streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, **decode_kwargs)
 
-    gc_kwargs = dict(model=llm, answer_list=st.session_state.answer_tokens_per_query,
-                     total_prompt_tokens=st.session_state.total_prompt_tokens, inputs=input_tensor,
-                     streamer=streamer, max_new_tokens=config.max_response_tokens, do_sample=False,
-                     temperature=temperature, num_beams=1)
+    generate_kwargs = dict(inputs=input_tensor, streamer=streamer, max_new_tokens=config.max_response_tokens,
+                        do_sample=False, temperature=temperature, num_beams=1)
+    
+    gc_kwargs = dict(model=llm, conversation=conversation, generate_kwargs=generate_kwargs)
     #Get returned content and count tokens returned
-    thread = Thread(target=generate_and_count, kwargs=gc_kwargs)
+    thread = Thread(target=generate_and_add, kwargs=gc_kwargs)
     thread.start()
 
     response_string = ""
@@ -237,13 +156,11 @@ def send_prompt_to_llm(input_tensor)  -> str:
         message_placeholder.markdown(response_string + "▌")
 
     message_placeholder.markdown(response_string)
-    conversation.append_response(response_string)
-    #mark ready to add another user message
-    conversation.mark_processed()
+    return response_string
 
 
 #Called each time the user enters something into the chat box and sends it
-def get_answer_from_llm(user_input) -> str:
+def get_answer_from_llm(full_query, user_input) -> str:
 
     response_string = ""
 
@@ -264,13 +181,11 @@ def get_answer_from_llm(user_input) -> str:
     llm = st.session_state.model
     temperature = st.session_state.temperature
 
+
     if isinstance(llm, LlamaForCausalLM):
-        #allow the LLama model class to actually format the prompt
-        input_ids = tokenizer._build_conversation_input_ids(conversation)
-        input_tensor = tokenizer.encode(input_ids, return_tensors='pt')
-        #Update the number of tokens with this current addition and
-        #prune the conversation if necessary
-        input_tensor = rightsize_conversation(input_tensor)
+        #This call does a lot.  Prunes the conversation if necessary to stay under the
+        #specified max tokens, and returns the full set of tokesn for the prompt
+        input_tensor = st.session_state.conversation.create_next_prompt_tokens(full_query)
     else:
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
@@ -282,17 +197,6 @@ def get_answer_from_llm(user_input) -> str:
 
 
 
-
-#The first user message to the model contains the system directive
-#but we don't want to display that.
-def remove_system_prompt_preamble(input_str: str):
-    system_prompt = build_system_prompt(system_prompt_content)
-    #If the system prompt is found at the beginning of the string, remove it.
-    if input_str.find(system_prompt) == 0:
-        len_system_prompt = len(system_prompt)
-        return input_str[len_system_prompt:]
-    else:
-        return input_str
 
 #Only call this function once unless use_RAG configuration
 #changes
@@ -327,7 +231,7 @@ def main() -> None:
         logger.info("Returning early from main because LLM not yet initialized")
         return
     
-    #If RAG is supposed to be configured and it isn't, also return
+    #If RAG is supposed to be configured and it isn't yet, also return
     if config.use_RAG and (("vector_store" not in st.session_state) or (st.session_state.vector_store is None)):
         logger.info("Returning early from main because RAG not yet initialized")
         return
@@ -355,18 +259,13 @@ def main() -> None:
             full_query = llama_utils.merge_rag_results(st.session_state.vector_store, user_input, config)
         else:
             full_query = user_input
+        #Track this is separate list since user messages in chat object may have system promp or RAG
+        #context appended to them
+        st.session_state.user_messages.append(user_input)
         st.session_state.logger.debug("*******************************************")
         st.session_state.logger.debug(full_query)
         st.session_state.logger.debug("*******************************************")
-        if (st.session_state.conversation is None) or (not config.use_conversation_history):
-            st.session_state.conversation = Conversation(build_system_prompt(st.session_state.llama_config.llm_system_prompt) + full_query)
-            st.session_state.user_messages = [user_input]
-        else:
-            st.session_state.conversation.add_user_input(user_input)
-            st.session_state.user_messages.append(user_input)
-
-        
-        answer = get_answer_from_llm(user_input)
+        answer = get_answer_from_llm(full_query, user_input)
 
 
 # This app will be launched multiple times by streamlit
