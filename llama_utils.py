@@ -29,11 +29,51 @@ from accelerate import init_empty_weights
 import toml
 import sys
 import logging
+from typing import Any, Tuple, Dict, Optional, Callable
 
 
 
 DEFAULT_CONFIG_FILE = "./.llama2_config.toml"
 logger = logging.getLogger('llama2_streamlit.llama_utils')
+
+
+class TextCallbackStreamer(TextStreamer):
+    """
+    Streamer that calls a callback each time a full word is computed.  Useful for tools like
+    streamlit to avoid the need to create a worker thread to call generate
+
+    <Tip warning={true}>
+
+    The API for the streamer classes is still under development and may change in the future.
+
+    </Tip>
+
+    Parameters:
+        callback (`Callable[[str, bool], None]`)
+        callback_kwargs (`dict`)
+        tokenizer (`AutoTokenizer`):
+            The tokenized used to decode the tokens.
+        skip_prompt (`bool`, *optional*, defaults to `False`):
+            Whether to skip the prompt to `.generate()` or not. Useful e.g. for chatbots.
+        decode_kwargs (`dict`, *optional*):
+            Additional keyword arguments to pass to the tokenizer's `decode` method.
+
+
+    """
+    def __init__(
+        self, callback : Callable[[str, bool], None], callback_args : Dict[str, Any], tokenizer: "AutoTokenizer", skip_prompt: bool = False,  **decode_kwargs
+    ):
+        super().__init__(tokenizer, skip_prompt, **decode_kwargs)
+        self.callback = callback
+        self.callback_args = callback_args
+
+    def on_finalized_text(self, text: str, stream_end: bool = False):
+        """Call the callback"""
+        if self.callback_args is not None:
+            self.callback(text, stream_end, **self.callback_args)
+        else:
+            self.callback(text, stream_end)
+
 
 
 class dotdict(dict):

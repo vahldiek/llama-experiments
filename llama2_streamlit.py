@@ -15,7 +15,8 @@ from threading import Thread
 from datasets import load_dataset
 from transformers import  (LlamaTokenizer, AutoConfig, AutoModelForCausalLM,
                             AutoTokenizer, pipeline, LlamaForCausalLM,
-                            Conversation, TextIteratorStreamer, PreTrainedModel)
+                            Conversation, TextIteratorStreamer, PreTrainedModel,
+                            PreTrainedTokenizer)
 
 import torch
 from torch.nn.functional import pad
@@ -34,11 +35,10 @@ import json
 import llama_utils
 import chroma_utils
 from token_conversation import TokenConversation
+from typing import Tuple
 
 
-
-
-
+logger = logging.getLogger('llama2_streamlit')
 
 def init_page() -> None:
     st.set_page_config(
@@ -69,24 +69,19 @@ def init_messages() -> None:
 
 
 
-#streamlit will only call this function if the model name parameter value changes
-#The @st.cache_resource decoration indcates this to streamlit
+#Call this once.  Don't set session values in here because resources are cached
+#accross sessions
 @st.cache_resource
-def load_llm(model_name : str) -> Union[LlamaForCausalLM]:
+def load_llm(model_name : str) -> Tuple[PreTrainedModel, PreTrainedTokenizer]:
     if model_name.startswith("llama-2-"):
-        st.session_state.model, st.session_state.tokenizer = llama_utils.load_optimized_model(
-                                                                st.session_state.llama_config)
-        if "conversation" in st.session_state:
-            st.session_state.conversation.reset_config(st.session_state.tokenizer,
-                                                            st.session_state.llama_config.llm_system_prompt,
-                                                            st.session_state.llama_config.max_prompt_tokens)
-        else:
-            st.session_state.conversation = TokenConversation(st.session_state.tokenizer,
-                                                            st.session_state.llama_config.llm_system_prompt,
-                                                            st.session_state.llama_config.max_prompt_tokens)
-        return st.session_state.model
+        model, tokenizer = llama_utils.load_optimized_model(
+                                        st.session_state.llama_config)
+        if(len(st.session_state) == 0):
+            logger.warning("************  User pressed stop during model load *******************")
+            st.stop()
+        return model, tokenizer
     else:
-        return None
+        return None, None
 
 
 #Select a model using the radio buttons
@@ -109,16 +104,31 @@ def get_chat_response_tensor(input_tensor: torch.Tensor, output_tensor: torch.Te
 
 
 
-#Call generate and count the number of new tokens
-def generate_and_add(model : PreTrainedModel,
-                     conversation : TokenConversation,
-                     generate_kwargs) -> str:
+#See if the user stopped an LLM response in the middle
+#If so, finish out recording the response
+def check_for_stopped_response():
+    if ("generate_response" in st.session_state) and (
+        st.session_state.generate_response is not None
+    ):
+        st.session_state.logger.info("Found leftover partial string from stopped response, adding")
+        st.session_state.conversation.append_partial_response(st.session_state.generate_response)
+        st.session_state.generate_response = None
+
+class GenerateStoppedException(Exception):
+    def __init__(self, details: str):
+        self.details = details
 
     
-    output_tensor = model.generate(**generate_kwargs)
-    return conversation.append_response_from_tokens(output_tensor)
+#This is called back each time model generate created a word
+def model_generate_callback(word: str, is_done: bool) -> None:
+    #If user stops generate in the middle, the session state is reset but generate is not
+    #actually killed
+    if len(st.session_state) == 0:
+        exception = GenerateStoppedException("User stopped generate!")
+        raise exception
 
-
+    st.session_state.generate_response += word
+    st.session_state.message_placeholder.markdown(st.session_state.generate_response + "▌")
 
 
 #Send the provided input tensor to the LLM and update
@@ -129,34 +139,40 @@ def send_prompt_to_llm(input_tensor)  -> str:
     llm = st.session_state.model
     temperature = st.session_state.temperature
     config = st.session_state.llama_config
+    full_response = None
 
     if(st.session_state.llama_config.use_GPU):
         input_tensor = input_tensor.to('cuda')
 
     with st.chat_message("assistant"):
-        message_placeholder = st.empty()
+        msg_window = st.empty()
+        st.session_state.message_placeholder = msg_window
 
-    #Set up a streamer to get words one by one and do the generate in
-    #  another thread.
-    decode_kwargs = dict(skip_special_tokens=True)
-    streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, **decode_kwargs)
+        #Set up a streamer to get words one by one once generate is called
+        decode_kwargs = dict(skip_special_tokens=True)
+        streamer = llama_utils.TextCallbackStreamer(model_generate_callback, None,
+                                                    tokenizer, skip_prompt=True, **decode_kwargs)
 
-    generate_kwargs = dict(inputs=input_tensor, streamer=streamer, max_new_tokens=config.max_response_tokens,
-                        do_sample=False, temperature=temperature, num_beams=1)
-    
-    gc_kwargs = dict(model=llm, conversation=conversation, generate_kwargs=generate_kwargs)
-    #Get returned content and count tokens returned
-    thread = Thread(target=generate_and_add, kwargs=gc_kwargs)
-    thread.start()
+        generate_kwargs = dict(inputs=input_tensor, streamer=streamer, max_new_tokens=config.max_response_tokens,
+                            do_sample=False, temperature=temperature, num_beams=1)
+        
+        #indicate that we expect a response from generate in case user stops the
+        #response in the middle
+        st.session_state.generate_response = ""
+        try:
+            output_tensor = llm.generate(**generate_kwargs)
+        #If user pressed stop during long running generate, session state will be reset, just return
+        except GenerateStoppedException as ex:
+            print("User stopped generate!!!")
+            return None
 
-    response_string = ""
-    #very last text 
-    for new_text in streamer:
-        response_string += new_text
-        message_placeholder.markdown(response_string + "▌")
+        full_response = conversation.append_response_from_tokens(output_tensor)
+        #indicate that we are done processing the generated text
+        st.session_state.generate_response = None
+        st.session_state.message_placeholder.markdown(full_response)
+        st.session_state.message_placeholder = None
 
-    message_placeholder.markdown(response_string)
-    return response_string
+    return full_response
 
 
 #Called each time the user enters something into the chat box and sends it
@@ -204,14 +220,15 @@ def get_answer_from_llm(full_query, user_input) -> str:
 
 
 
-#Only call this function once unless use_RAG configuration
-#changes
+#Call this once.  Don't set session values in here because resources are cached
+#accross sessions
 @st.cache_resource
 def init_rag(use_RAG):
-    if use_RAG and ("vector_store" not in st.session_state):
-            st.session_state.vector_store = chroma_utils.get_vector_store(st.session_state.llama_config)
+    if use_RAG:
+            vector_store = chroma_utils.get_vector_store(st.session_state.llama_config)
     else:
-        st.session_state.vector_store = None
+        vector_store = None
+    return vector_store
 
 
 def display_chat_history():
@@ -250,30 +267,39 @@ def on_new_question():
 #main function.  This script is launched multiple times by streamlit
 def main() -> None:
     _ = load_dotenv()
-    logger = logging.getLogger('llama2_streamlit')
     logger.setLevel(logging.DEBUG)
     logger.debug("streamlit executing main() [again]")
     st.session_state.logger = logger
     if not "llama_config" in st.session_state:
         st.session_state.llama_config = llama_utils.read_config()
-
+        #User can press stop during config file load
+        if(len(st.session_state) == 0):
+            logger.warning("User pressed stop during config file load")
+            st.stop()
+        
     config = st.session_state.llama_config
     init_page()
-    init_rag(config.use_RAG)
-    #load the default LLM
-    load_llm("llama-2-7b-chat-int8")
-    init_messages()
-
-    #Just return if main has been called again and initialization has not
-    #completed
-    if ("model" not in st.session_state) or (st.session_state.model is None):
-        logger.info("Returning early from main because LLM not yet initialized")
-        return
+    st.session_state.vector_store = init_rag(config.use_RAG)
+    #User could press stop during this short window too
+    if(len(st.session_state) == 0):
+        logger.warning("User pressed stop during init_rag")
+        st.stop()
     
-    #If RAG is supposed to be configured and it isn't yet, also return
-    if config.use_RAG and (("vector_store" not in st.session_state) or (st.session_state.vector_store is None)):
-        logger.info("Returning early from main because RAG not yet initialized")
-        return
+
+    #load the default LLM
+    st.session_state.model, st.session_state.tokenizer = load_llm("llama-2-7b-chat-int8")
+    #If user pressed stop during model load, session state will be
+    #wiped out
+    if(len(st.session_state) == 0):
+        st.stop()
+    
+    if "conversation" not in st.session_state:
+        st.session_state.conversation = TokenConversation(st.session_state.tokenizer,
+                                                        st.session_state.llama_config.llm_system_prompt,
+                                                        st.session_state.llama_config.max_prompt_tokens)
+    init_messages()
+    check_for_stopped_response()
+
 
     display_chat_history()
 

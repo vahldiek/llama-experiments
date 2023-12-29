@@ -149,6 +149,28 @@ class TokenConversation():
         return chatbot_answer_str
 
 
+    #Append a partial string response if the response was stopped by the user
+    def append_partial_response(self, response_str: str) -> None:
+         #This class requires one response to be paired with one request
+        #while the partner conversation class allows multiple answers to follow
+        #a single request
+        if(len(self.base_conversation.generated_responses) > len(self.base_conversation.past_user_inputs)):
+            logger.warn("Attempted to add second answer to conversation without new user input")
+            raise ValueError()
+        
+        #Determine the number of tokens in the partial response
+        response_tokens = self.tokenizer.encode(response_str, return_tensors='pt')
+        #Determine the length of the system prompt
+        response_len = len(response_tokens[0])
+
+        self.base_conversation.append_response(response_str)
+        self.response_sizes.append(response_len)
+        self.total_tokens += response_len
+        self.base_conversation.mark_processed()
+  
+
+
+
     #Update queues tracking the tokens used for each input and prune off early conversation elements if
     #conversation has become too long
     def rightsize_conversation(self, input_tensor)  -> Tuple[torch.Tensor, int]:
