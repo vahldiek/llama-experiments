@@ -27,7 +27,7 @@ max_response_tokens = 500
 
 #Maximum number of tokens to send to LLM.  If tokens becomes larger
 #than this, older rounds of the conversation are pruned off.
-max_prompt_tokens = 1000
+max_prompt_tokens = 800
 
 #If true, use RAG in chat queries
 use_RAG = false
