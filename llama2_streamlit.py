@@ -185,7 +185,13 @@ def get_answer_from_llm(full_query, user_input) -> str:
     if isinstance(llm, LlamaForCausalLM):
         #This call does a lot.  Prunes the conversation if necessary to stay under the
         #specified max tokens, and returns the full set of tokesn for the prompt
-        input_tensor = st.session_state.conversation.create_next_prompt_tokens(full_query)
+        input_tensor, rounds_pruned = st.session_state.conversation.create_next_prompt_tokens(full_query)
+        #redraw the chat history if conversation trimmed
+        #This does not seem optimal either, sometimes streamlit behaves oddly when chat session
+        #becomes too large
+        if rounds_pruned > 0:
+            #Need to prune our list of user messages
+            st.session_state.user_messages = st.session_state.user_messages[rounds_pruned:]
     else:
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
@@ -206,6 +212,39 @@ def init_rag(use_RAG):
             st.session_state.vector_store = chroma_utils.get_vector_store(st.session_state.llama_config)
     else:
         st.session_state.vector_store = None
+
+
+def display_chat_history():
+    # Display chat history
+    if ("conversation" in st.session_state) and (not st.session_state.conversation is None):
+        # Walk through all of text in the conversation
+        current_user_message = 0
+        for is_user, text in st.session_state.conversation.iter_texts():
+            if is_user:
+                with st.chat_message("user"):
+                    #Use messages from here since full messages may be augmented with
+                    #RAG data
+                    st.markdown(st.session_state.user_messages[current_user_message])
+                    current_user_message = current_user_message + 1
+            else:
+                with st.chat_message("assistant"):
+                    st.markdown(text)
+
+
+def on_new_question():
+    user_question = st.session_state.user_question
+    #Augment the query with information from the vector store if needed
+    if st.session_state.llama_config.use_RAG:
+        full_query = llama_utils.merge_rag_results(st.session_state.vector_store, user_question, st.session_state.llama_config)
+    else:
+        full_query = user_question
+    #Track this is separate list since user messages in chat object may have system promp or RAG
+    #context appended to them
+    st.session_state.user_messages.append(user_question)
+    st.session_state.logger.debug("*******************************************")
+    st.session_state.logger.debug(full_query)
+    st.session_state.logger.debug("*******************************************")
+    answer = get_answer_from_llm(full_query, user_question)
 
 
 #main function.  This script is launched multiple times by streamlit
@@ -236,36 +275,15 @@ def main() -> None:
         logger.info("Returning early from main because RAG not yet initialized")
         return
 
-    # Display chat history
-    if ("conversation" in st.session_state) and (not st.session_state.conversation is None):
-        # Walk through all of text in the conversation
-        current_user_message = 0
-        for is_user, text in st.session_state.conversation.iter_texts():
-            if is_user:
-                with st.chat_message("user"):
-                    #Use messages from here since full messages may be augmented with
-                    #RAG data
-                    st.markdown(st.session_state.user_messages[current_user_message])
-                    current_user_message = current_user_message + 1
-            else:
-                with st.chat_message("assistant"):
-                    st.markdown(text)
+    display_chat_history()
 
+    # Add user input area
+    #callbacks don't really seem to be the answer to fixing display issues either
+    #st.chat_input("Enter your question!", key="user_question", on_submit=on_new_question)
+    if user_question := st.chat_input("Enter your question!"):
+        st.session_state.user_question = user_question
+        on_new_question()
 
-    # Supervise user input
-    if user_input := st.chat_input("Enter your question!"):
-        #Augment the query with information from the vector store if needed
-        if config.use_RAG:
-            full_query = llama_utils.merge_rag_results(st.session_state.vector_store, user_input, config)
-        else:
-            full_query = user_input
-        #Track this is separate list since user messages in chat object may have system promp or RAG
-        #context appended to them
-        st.session_state.user_messages.append(user_input)
-        st.session_state.logger.debug("*******************************************")
-        st.session_state.logger.debug(full_query)
-        st.session_state.logger.debug("*******************************************")
-        answer = get_answer_from_llm(full_query, user_input)
 
 
 # This app will be launched multiple times by streamlit

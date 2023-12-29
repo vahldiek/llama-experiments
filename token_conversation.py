@@ -30,7 +30,7 @@ import toml
 import sys
 import logging
 import uuid
-from typing import Any
+from typing import Any, Tuple
 
 logger = logging.getLogger('llama2_streamlit.token_conversation')
 
@@ -151,7 +151,7 @@ class TokenConversation():
 
     #Update queues tracking the tokens used for each input and prune off early conversation elements if
     #conversation has become too long
-    def rightsize_conversation(self, input_tensor):
+    def rightsize_conversation(self, input_tensor)  -> Tuple[torch.Tensor, int]:
         have_previous_data = (not self.base_conversation.past_user_inputs is None) and (
                                 len(self.base_conversation.past_user_inputs) > 0)
 
@@ -171,39 +171,45 @@ class TokenConversation():
             logger.debug(f"Sending {new_total_tokens} tokens")
             #Total will be updated again after answer is returned
             self.total_tokens = new_total_tokens
-            return input_tensor
+            return input_tensor, 0
         
         logger.info(f"&&&& Request to send {new_total_tokens} tokens, must be pruned &&&&")
         #otherwise, we need to start pruning old elements from the conversation
         #until we get under the limit
         #count the number of request/response pairs that we need to prune
-        i=0
+        rounds_pruned=0
         while (new_total_tokens > self.max_tokens) and (
-            i < len(self.response_sizes)):
-            round_tokens = (self.user_sizes[i] + self.response_sizes[i])
+            rounds_pruned < len(self.response_sizes)):
+            round_tokens = (self.user_sizes[rounds_pruned] + self.response_sizes[rounds_pruned])
             new_total_tokens = new_total_tokens - round_tokens
-            i = i+1
-        logger.debug(f"pruned {i} conversation rounds")
+            rounds_pruned = rounds_pruned+1
+        logger.debug(f"pruned {rounds_pruned} conversation rounds")
 
         #Adjust our stored length vectors
-        self.user_sizes = self.user_sizes[i:]
-        self.response_sizes = self.response_sizes[i:]
+        self.user_sizes = self.user_sizes[rounds_pruned:]
+        self.response_sizes = self.response_sizes[rounds_pruned:]
 
         new_conversation = Conversation()
-        trimmed_responses = self.base_conversation.generated_responses[i:]
-        trimmed_inputs = self.base_conversation.past_user_inputs[i:]
+        trimmed_responses = self.base_conversation.generated_responses[rounds_pruned:]
+        trimmed_inputs = self.base_conversation.past_user_inputs[rounds_pruned:]
         
-        #Add the system prompt to the first new input
-        trimmed_inputs[0] = self.full_system_prompt + trimmed_inputs[0]
-        logger.debug(f"First request now: \n{trimmed_inputs[0]}\n")
-        #Add the old trimmed inputs and responses to the new conversation
-        for input, response in zip(trimmed_inputs, trimmed_responses):
-            new_conversation.add_user_input(input)
-            new_conversation.append_response(response)
-            new_conversation.mark_processed()
-
-        #Add the current request to the conversation
-        new_conversation.add_user_input(self.base_conversation.new_user_input)
+        #If we have any previous conversation rounds left, put those in
+        #the new conversation
+        if len(trimmed_inputs) > 0:
+            #Add the system prompt to the first new input
+            trimmed_inputs[0] = self.full_system_prompt + trimmed_inputs[0]
+            logger.debug(f"First request now: \n{trimmed_inputs[0]}\n")
+            #Add the old trimmed inputs and responses to the new conversation
+            for input, response in zip(trimmed_inputs, trimmed_responses):
+                new_conversation.add_user_input(input)
+                new_conversation.append_response(response)
+                new_conversation.mark_processed()
+            #Add the current request to the conversation
+            new_conversation.add_user_input(self.base_conversation.new_user_input)
+        #Otherwise if we deleted all of our previous rounds, add the system prompt to the current
+        #input
+        else:
+            new_conversation.add_user_input(self.full_system_prompt + self.base_conversation.new_user_input)
 
         #update the conversation
         self.base_conversation = new_conversation
@@ -215,13 +221,13 @@ class TokenConversation():
         #Will be updated again once response is received
         self.total_tokens = new_total_tokens
         logger.debug("reduced to {} tokens".format(new_total_tokens))
-        return input_tensor
+        return input_tensor, rounds_pruned
 
 
 
     #Given the proposed input, generate the next set of prompt tokens
     #pruning the conversation if necessary
-    def create_next_prompt_tokens(self, input: str) -> torch.Tensor:
+    def create_next_prompt_tokens(self, input: str) -> Tuple[torch.Tensor, int]:
         #If there are no prevous user requests in the conversation
         #prepend the system prompt
         if (self.base_conversation.past_user_inputs is None) or (
@@ -237,8 +243,8 @@ class TokenConversation():
 
         #Update the number of tokens with this current addition and
         #prune the conversation if necessary
-        input_tensor = self.rightsize_conversation(input_tensor)
-        return input_tensor
+        input_tensor, rounds_pruned = self.rightsize_conversation(input_tensor)
+        return input_tensor, rounds_pruned
     
 
     #Iterate over all of the messages received so far for printing
