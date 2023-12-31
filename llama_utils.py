@@ -165,10 +165,13 @@ def load_optimized_model(llama_config):
         use_bitsandbytes_quantization=False
 
     #Load the base model
-    original_model = LlamaForCausalLM.from_pretrained(
-                        model_id, config=config,
-                            load_in_4bit=use_bitsandbytes_quantization, device_map=inference_device_map)
-
+    if quantized_model_path is None:
+        original_model = LlamaForCausalLM.from_pretrained(
+                            model_id, config=config,
+                                load_in_4bit=use_bitsandbytes_quantization, device_map=inference_device_map)
+    else:
+        #Seems that one can get by not actually loading the full original model, just the quantized version!
+        original_model = LlamaForCausalLM(config=config)
 
     #Load the tokenizer
     tokenizer = LlamaTokenizer.from_pretrained(model_id, use_fast=True, device_map=inference_device_map)
