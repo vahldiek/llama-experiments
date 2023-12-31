@@ -1,7 +1,7 @@
 # Llama Experiments
 This project contains sample code for experimenting with the Llama2 language model and the Intel® Extension for PyTorch\*
 The project includes a development container that can be used with VSCode.  Alternatively the Dockerfile in the
-llama-devcontainer directory can be examined to determine the environment requirements for these samples.
+`transformers-devcontainer` directory can be examined to determine the environment requirements for these samples.
 The Python scripts used in this project load their configuration data from the file `.transformers_config.toml` in the top
 level directory.  A different configuration file can be specified as a command line argument.
 
