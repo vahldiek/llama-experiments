@@ -1,2 +1,2 @@
 #!/bin/bash
-streamlit run ./llama2_streamlit.py
+streamlit run ./transformers_streamlit.py

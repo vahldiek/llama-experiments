@@ -1,9 +1,9 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the
 // README at: https://github.com/devcontainers/templates/tree/main/src/ubuntu
 {
-	"name": "llama-devcontainer",
+	"name": "transformers-devcontainer",
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
-	"image": "llama-devcontainer:latest"
+	"image": "transformers-devcontainer:latest",
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	// "features": {},

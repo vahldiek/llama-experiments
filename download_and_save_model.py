@@ -1,12 +1,11 @@
 from dotenv import load_dotenv
-from transformers import LlamaTokenizer, AutoConfig, LlamaForCausalLM, AutoModel, AutoTokenizer
-import torch
+from transformers import AutoConfig, AutoModel, AutoTokenizer
 import logging
 
 #.env file should contain huggingface token for download
 #HF_TOKEN="yourtoken"
 load_dotenv()
-logging.getLogger('llama2_streamlit').setLevel(logging.DEBUG)
+logging.getLogger('transformers_streamlit').setLevel(logging.DEBUG)
 
 #Download the chat version of the model
 model_id = "meta-llama/Llama-2-7b-chat-hf"

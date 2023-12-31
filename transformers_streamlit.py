@@ -32,7 +32,7 @@ import sys
 import json
 
 #Import local modules
-import llama_utils
+import transformers_utils
 import chroma_utils
 from token_conversation import TokenConversation
 from typing import Tuple
@@ -42,9 +42,9 @@ logger = logging.getLogger('llama2_streamlit')
 
 def init_page() -> None:
     st.set_page_config(
-        page_title=st.session_state.llama_config.chat_page_name
+        page_title=st.session_state.transformers_config.chat_page_name
     )
-    st.header(st.session_state.llama_config.chat_page_name)
+    st.header(st.session_state.transformers_config.chat_page_name)
     st.sidebar.title("Options")
 
     st.sidebar.slider("Temperature:", min_value=0.0,
@@ -55,17 +55,17 @@ def init_page() -> None:
 
 def init_messages() -> None:
     clear_button = st.sidebar.button("Clear Conversation", key="clear")
-    if clear_button or "llama_config" not in st.session_state:
+    if clear_button or "transformers_config" not in st.session_state:
         #reread the configuration file in case any changes were made
-        st.session_state.llama_config = llama_utils.read_config()
+        st.session_state.transformers_config = transformers_utils.read_config()
     if clear_button or "user_messages" not in st.session_state:
         st.session_state.user_messages = []
     #If the tokenizer has been loaded, reset the conversation
     #otherwise the conversation will be reset once the tokenizer is loaded
     if clear_button and "tokenizer" in st.session_state:
         st.session_state.conversation = TokenConversation(st.session_state.tokenizer,
-                                                   st.session_state.llama_config.llm_system_prompt,
-                                                   st.session_state.llama_config.max_prompt_tokens)
+                                                   st.session_state.transformers_config.llm_system_prompt,
+                                                   st.session_state.transformers_config.max_prompt_tokens)
 
 
 
@@ -74,8 +74,8 @@ def init_messages() -> None:
 @st.cache_resource
 def load_llm(model_name : str) -> Tuple[PreTrainedModel, PreTrainedTokenizer]:
     if model_name.startswith("llama-2-"):
-        model, tokenizer = llama_utils.load_optimized_model(
-                                        st.session_state.llama_config)
+        model, tokenizer = transformers_utils.load_optimized_model(
+                                        st.session_state.transformers_config)
         if(len(st.session_state) == 0):
             logger.warning("************  User pressed stop during model load *******************")
             st.stop()
@@ -138,10 +138,10 @@ def send_prompt_to_llm(input_tensor)  -> str:
     conversation = st.session_state.conversation
     llm = st.session_state.model
     temperature = st.session_state.temperature
-    config = st.session_state.llama_config
+    config = st.session_state.transformers_config
     full_response = None
 
-    if(st.session_state.llama_config.use_GPU):
+    if(st.session_state.transformers_config.use_GPU):
         input_tensor = input_tensor.to('cuda')
 
     with st.chat_message("assistant"):
@@ -150,7 +150,7 @@ def send_prompt_to_llm(input_tensor)  -> str:
 
         #Set up a streamer to get words one by one once generate is called
         decode_kwargs = dict(skip_special_tokens=True)
-        streamer = llama_utils.TextCallbackStreamer(model_generate_callback, None,
+        streamer = transformers_utils.TextCallbackStreamer(model_generate_callback, None,
                                                     tokenizer, skip_prompt=True, **decode_kwargs)
 
         generate_kwargs = dict(inputs=input_tensor, streamer=streamer, max_new_tokens=config.max_response_tokens,
@@ -225,7 +225,7 @@ def get_answer_from_llm(full_query, user_input) -> str:
 @st.cache_resource
 def init_rag(use_RAG):
     if use_RAG:
-            vector_store = chroma_utils.get_vector_store(st.session_state.llama_config)
+            vector_store = chroma_utils.get_vector_store(st.session_state.transformers_config)
     else:
         vector_store = None
     return vector_store
@@ -251,8 +251,8 @@ def display_chat_history():
 def on_new_question():
     user_question = st.session_state.user_question
     #Augment the query with information from the vector store if needed
-    if st.session_state.llama_config.use_RAG:
-        full_query = llama_utils.merge_rag_results(st.session_state.vector_store, user_question, st.session_state.llama_config)
+    if st.session_state.transformers_config.use_RAG:
+        full_query = transformers_utils.merge_rag_results(st.session_state.vector_store, user_question, st.session_state.transformers_config)
     else:
         full_query = user_question
     #Track this is separate list since user messages in chat object may have system promp or RAG
@@ -270,14 +270,14 @@ def main() -> None:
     logger.setLevel(logging.DEBUG)
     logger.debug("streamlit executing main() [again]")
     st.session_state.logger = logger
-    if not "llama_config" in st.session_state:
-        st.session_state.llama_config = llama_utils.read_config()
+    if not "transformers_config" in st.session_state:
+        st.session_state.transformers_config = transformers_utils.read_config()
         #User can press stop during config file load
         if(len(st.session_state) == 0):
             logger.warning("User pressed stop during config file load")
             st.stop()
         
-    config = st.session_state.llama_config
+    config = st.session_state.transformers_config
     init_page()
     st.session_state.vector_store = init_rag(config.use_RAG)
     #User could press stop during this short window too
@@ -295,8 +295,8 @@ def main() -> None:
     
     if "conversation" not in st.session_state:
         st.session_state.conversation = TokenConversation(st.session_state.tokenizer,
-                                                        st.session_state.llama_config.llm_system_prompt,
-                                                        st.session_state.llama_config.max_prompt_tokens)
+                                                        st.session_state.transformers_config.llm_system_prompt,
+                                                        st.session_state.transformers_config.max_prompt_tokens)
     init_messages()
     check_for_stopped_response()
 

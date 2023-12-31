@@ -17,7 +17,7 @@ from typing import List
 from langchain.prompts import PromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain.schema import StrOutputParser
-import llama_utils
+import transformers_utils
 from langchain.llms.huggingface_pipeline import HuggingFacePipeline
 from langchain_experimental.chat_models import Llama2Chat
 import logging
@@ -26,7 +26,7 @@ sentence_transformer_model="all-MiniLM-L6-v2"
 _ = load_dotenv()
 
 RAG_COLLECTION_NAME = "Transcripts_Store"
-logger = logging.getLogger('llama2_streamlit.chroma_utils')
+logger = logging.getLogger('transformers_streamlit.chroma_utils')
 
 
 
@@ -37,9 +37,9 @@ logger = logging.getLogger('llama2_streamlit.chroma_utils')
 #config = AutoConfig.from_pretrained(original_model_id, torchscript=True)
 # configure our database
 
-def get_vector_store(llama_config, rescan_dir=False, reset_db=False):
+def get_vector_store(transformers_config, rescan_dir=False, reset_db=False):
     vector_store = None
-    persistent_client = chromadb.PersistentClient(llama_config.rag_db_dir)
+    persistent_client = chromadb.PersistentClient(transformers_config.rag_db_dir)
 
     #delete the collection if resetting the entire db
     if reset_db:
@@ -51,7 +51,7 @@ def get_vector_store(llama_config, rescan_dir=False, reset_db=False):
     #Use a cosine distance measurement and sentence transformer embeddings
     collection = persistent_client.get_or_create_collection(RAG_COLLECTION_NAME, metadata={"hnsw:space": "cosine"})
     #If not using GPU, set to CPU explicitly.  Otherwise let the framework pick.
-    if not llama_config.use_GPU:
+    if not transformers_config.use_GPU:
         model_kwargs=dict(device=torch.device("cpu"))
         embeddings = SentenceTransformerEmbeddings(
             model_name=sentence_transformer_model,
@@ -64,14 +64,14 @@ def get_vector_store(llama_config, rescan_dir=False, reset_db=False):
 
     # Create a langchain vectorstore object
     client_settings = Settings(
-        persist_directory=llama_config.rag_db_dir, #location to store 
+        persist_directory=transformers_config.rag_db_dir, #location to store 
         anonymized_telemetry=False # optional but showing how to toggle telemetry
     )
     vector_store = Chroma(collection_name=RAG_COLLECTION_NAME, client_settings=client_settings, client=persistent_client,
-                            embedding_function=embeddings, persist_directory=llama_config.rag_db_dir)
+                            embedding_function=embeddings, persist_directory=transformers_config.rag_db_dir)
     
     if rescan_dir:
-        add_files_to_vector_store(vector_store, llama_config.rag_file_dir, llama_config)
+        add_files_to_vector_store(vector_store, transformers_config.rag_file_dir, transformers_config)
 
     return vector_store
 
@@ -90,7 +90,7 @@ def add_metadata(docs : List[Document], data : dict):
 
 # check if the database exists already
 # if not, create it, otherwise read from the database
-def add_files_to_vector_store(vector_store, path, llama_config):
+def add_files_to_vector_store(vector_store, path, transformers_config):
 
     logger.debug("Creating database")
     headers_to_split_on = [
@@ -100,7 +100,7 @@ def add_files_to_vector_store(vector_store, path, llama_config):
     ]
     markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size = llama_config.rag_doc_max_chars,
+        chunk_size = transformers_config.rag_doc_max_chars,
         chunk_overlap  = 20,
         length_function = len,
         is_separator_regex = False,
@@ -113,7 +113,7 @@ def add_files_to_vector_store(vector_store, path, llama_config):
         file_path = os.path.join(path, filename)
         #recurse if we hit another directory
         if os.path.isdir(file_path):
-            add_files_to_vector_store(vector_store, str(file_path), llama_config)
+            add_files_to_vector_store(vector_store, str(file_path), transformers_config)
         elif not file_in_collection(vector_store, file_path):
             logger.debug(f"Adding file {file_path}")
             if filename.endswith('.md') or filename.endswith('.MD'):
@@ -145,7 +145,7 @@ def add_files_to_vector_store(vector_store, path, llama_config):
 def main():
 
 
-    config = llama_utils.read_config()
+    config = transformers_utils.read_config()
     logger.setLevel(logging.DEBUG)
 
     vector_store = get_vector_store(config, config.rescan_RAG_files, config.reset_RAG_db)
@@ -156,7 +156,7 @@ def main():
     for doc in docs:
         print(str(doc))
 
-    model, tokenizer = llama_utils.load_optimized_model(config)
+    model, tokenizer = transformers_utils.load_optimized_model(config)
 
     query_list = ["Hello my name is Anjo",
     "who are you?",
@@ -164,7 +164,7 @@ def main():
     "who leads the group?",
     "tell me a joke"]
 
-    llama_utils.send_rag_queries(vector_store, model, tokenizer, query_list, config)
+    transformers_utils.send_rag_queries(vector_store, model, tokenizer, query_list, config)
 
 if __name__ == "__main__":
     main()

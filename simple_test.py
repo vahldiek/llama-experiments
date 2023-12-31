@@ -1,9 +1,9 @@
-import llama_utils
+import transformers_utils
 from dotenv import load_dotenv
 from transformers import (PreTrainedModel, PreTrainedTokenizer)
 import logging
 
-config = llama_utils.read_config()
+config = transformers_utils.read_config()
 logging.getLogger().setLevel(logging.DEBUG)
 
 example_context = """The Security and Privacy Research group (SPR) led by Intel Labs Vice President Sridhar Iyengar
@@ -19,9 +19,9 @@ context: '''""" + example_context + "'''\n" + "question:  What can you tell me a
 "tell me a joke"]
 
 
-model, tokenizer = llama_utils.load_optimized_model(config)
+model, tokenizer = transformers_utils.load_optimized_model(config)
 
-llama_utils.send_model_queries(model, tokenizer, query_list, config)
+transformers_utils.send_model_queries(model, tokenizer, query_list, config)
 
 
 

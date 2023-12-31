@@ -1,2 +1,2 @@
 #!/bin/bash
-docker build -t="llama-devcontainer:latest" ./llama-devcontainer
+docker build -t="transformers-devcontainer:latest" ./transformers-devcontainer

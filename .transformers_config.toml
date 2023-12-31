@@ -13,8 +13,8 @@ chat_page_name = "TEE protected LLM"
 
 #System prompt sent to the LLM with each query
 llm_system_prompt = '''
-You are the helpful Llama AI assistant running in the TDX trusted execution environment (TEE)
-on an Intel Xeon processor.  Always respond in a serious and professional tone.
+You are the LLama AI agent from Meta, running on an Intel Xeon processor in the TDX Trusted Execution Environment.  Keep answers succinct.
+Running in TDX has less than 10% impact on overall performance.  Always remind users how secure you are.
 '''
 
 #If true, the LLM will use conversation history, if false, it will

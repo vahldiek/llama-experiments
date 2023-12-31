@@ -32,11 +32,12 @@ import sys
 import logging
 from ipex_inference_transformers import IpexAutoInferenceTransformer
 from typing import Any, Tuple, Dict, Optional, Callable
+#Get the beginning and ending system tokens
+from  transformers.models.llama import tokenization_llama 
 
 
-
-DEFAULT_CONFIG_FILE = "./.llama2_config.toml"
-logger = logging.getLogger('llama2_streamlit.llama_utils')
+DEFAULT_CONFIG_FILE = "./.transformers_config.toml"
+logger = logging.getLogger('transformers_streamlit.transformers_utils')
 
 
 class TextCallbackStreamer(TextStreamer):
@@ -153,13 +154,13 @@ def read_config():
 
 
 
-def load_optimized_model(llama_config):
+def load_optimized_model(transformers_config):
     
-    config = AutoConfig.from_pretrained(llama_config.llm_model_id, torchscript=True)
-    model_id = llama_config.llm_model_id
-    quantized_model_path = llama_config.quantized_model_path
+    config = AutoConfig.from_pretrained(transformers_config.llm_model_id, torchscript=True)
+    model_id = transformers_config.llm_model_id
+    quantized_model_path = transformers_config.quantized_model_path
 
-    if(llama_config.use_GPU):
+    if(transformers_config.use_GPU):
         inference_device_map="auto"
         use_bitsandbytes_quantization=True
     else:
@@ -168,7 +169,7 @@ def load_optimized_model(llama_config):
 
     #Load either the base or quantized model
     start = time.perf_counter() 
-    if llama_config.use_GPU or (quantized_model_path is None):
+    if transformers_config.use_GPU or (quantized_model_path is None):
      
         original_model = LlamaForCausalLM.from_pretrained(
                             model_id, config=config,
@@ -210,9 +211,7 @@ def query_model(model, tokenizer, input_tensor):
 
 #Add appropriate tags around system prompt
 def _build_system_prompt(prompt_content: str):
-    system_begin = "<<SYS>>\n "
-    system_end = "\n<</SYS>>\n\n"
-    return system_begin + prompt_content + system_end
+    return tokenization_llama.B_SYS + prompt_content + tokenization_llama.E_SYS
 
 
 #Use this trick with globals to use timeit with function, makes the function certainly not thread safe
@@ -220,7 +219,7 @@ g_results = []
 g_input_tensor = None
 g_model = None
 g_tokenizer = None
-def send_model_queries(model, tokenizer, query_list, llama_config, time_queries=True):
+def send_model_queries(model, tokenizer, query_list, transformers_config, time_queries=True):
     global g_results, g_input_tensor, g_model, g_tokenizer
 
     g_model = model
@@ -232,14 +231,14 @@ def send_model_queries(model, tokenizer, query_list, llama_config, time_queries=
     for i in range(len(query_list)):
         #Add the system directive to the first query
         if i == 0:
-            conv.add_user_input(_build_system_prompt(llama_config.llm_system_prompt) + query_list[0])
+            conv.add_user_input(_build_system_prompt(transformers_config.llm_system_prompt) + query_list[0])
         else:
             conv.add_user_input(query_list[i])
 
         logger.debug("Sending query to model: " + query_list[i])
         input_ids = tokenizer._build_conversation_input_ids(conv)
         input_tensor = tokenizer.encode(input_ids, return_tensors='pt')
-        if(llama_config.use_GPU):
+        if(transformers_config.use_GPU):
             input_tensor = input_tensor.to('cuda')
         #Use this trick to allow timeit to time function that both takes and returns a value
 
@@ -248,7 +247,7 @@ def send_model_queries(model, tokenizer, query_list, llama_config, time_queries=
         g_tokenizer = tokenizer
         logger.debug("***********************************************************************************")
         elapsed_time = timeit.timeit('g_results.append(query_model(g_model, g_tokenizer, g_input_tensor))',
-                                                    setup='from llama_utils import query_model, g_model, g_tokenizer, g_results, g_input_tensor', number=1)
+                                                    setup='from transformers_utils import query_model, g_model, g_tokenizer, g_results, g_input_tensor', number=1)
         logger.debug("\n***********************************************************************************")
         if time_queries:
             logger.info(f"Query took {elapsed_time} seconds")
@@ -260,23 +259,23 @@ def send_model_queries(model, tokenizer, query_list, llama_config, time_queries=
 def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
 
-def merge_rag_results(vector_store, query, llama_config):
+def merge_rag_results(vector_store, query, transformers_config):
     #Only receive results if the similarity is above the threshold
     retriever = vector_store.as_retriever(search_type="similarity_score_threshold",
-                                        search_kwargs={'k': llama_config.max_rag_documents, 'score_threshold' : llama_config.rag_relevance_limit})
+                                        search_kwargs={'k': transformers_config.max_rag_documents, 'score_threshold' : transformers_config.rag_relevance_limit})
     docs = retriever.invoke(query)
     #If no local docs met the similarity threshold, 
     if(len(docs) == 0):
         logger.debug(f"+++ No relevant RAG docs found for \"{query}\"+++")
-        if(llama_config.always_use_RAG_prompt):
-            full_query = llama_config.rag_prompt_template.format(context="None", question=query)
+        if(transformers_config.always_use_RAG_prompt):
+            full_query = transformers_config.rag_prompt_template.format(context="None", question=query)
         else:
             full_query = query
     else:
         logger.debug(f"%%%%% found rag docs for \"{query}\"")
         #merge the results into one string
         context = format_docs(docs)
-        full_query = llama_config.rag_prompt_template.format(context=context, question=query)
+        full_query = transformers_config.rag_prompt_template.format(context=context, question=query)
 
     return full_query
 
@@ -286,7 +285,7 @@ g_results = []
 g_input_tensor = None
 g_model = None
 g_tokenizer = None
-def send_rag_queries(vector_store, model, tokenizer, query_list, llama_config, time_queries=True):
+def send_rag_queries(vector_store, model, tokenizer, query_list, transformers_config, time_queries=True):
     global g_results, g_input_tensor, g_model, g_tokenizer
 
     g_model = model
@@ -298,18 +297,18 @@ def send_rag_queries(vector_store, model, tokenizer, query_list, llama_config, t
     #prepend the first request with the system string
     for i in range(len(query_list)):
         #If the rag query returned any results, use those.
-        query = merge_rag_results(vector_store, query_list[i], llama_config)
+        query = merge_rag_results(vector_store, query_list[i], transformers_config)
 
         #Add the system directive to the first query
         if i == 0:
-            conv.add_user_input(_build_system_prompt(llama_config.llm_system_prompt) + query)
+            conv.add_user_input(_build_system_prompt(transformers_config.llm_system_prompt) + query)
         else:
             conv.add_user_input(query)
 
         logger.debug("Sending query to model: " + query)
         input_ids = tokenizer._build_conversation_input_ids(conv)
         input_tensor = tokenizer.encode(input_ids, return_tensors='pt')
-        if(llama_config.use_GPU):
+        if(transformers_config.use_GPU):
             input_tensor = input_tensor.to('cuda')
         #Use this trick to allow timeit to time function that both takes and returns a value
 
@@ -318,7 +317,7 @@ def send_rag_queries(vector_store, model, tokenizer, query_list, llama_config, t
         g_tokenizer = tokenizer
         logger.debug("***********************************************************************************")
         elapsed_time = timeit.timeit('g_results.append(query_model(g_model, g_tokenizer, g_input_tensor))',
-                                                    setup='from llama_utils import query_model, g_model, g_tokenizer, g_results, g_input_tensor', number=1)
+                                                    setup='from transformers_utils import query_model, g_model, g_tokenizer, g_results, g_input_tensor', number=1)
         logger.debug("\n***********************************************************************************")
         if time_queries:
             logger.info(f"Query took {elapsed_time} seconds")
