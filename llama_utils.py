@@ -4,6 +4,7 @@ import json
 import pathlib
 import os
 import timeit
+import time
 from dotenv import load_dotenv
 
 from datasets import load_dataset
@@ -164,14 +165,21 @@ def load_optimized_model(llama_config):
         inference_device_map=torch.device('cpu')
         use_bitsandbytes_quantization=False
 
-    #Load the base model
-    if quantized_model_path is None:
+    #Load the base model.  While we seem to be able to avoid loading the full model when using the Intel
+    #quantized version, neither start time nor memory consumption are reduced.  Needs more investigation.
+    if True or quantized_model_path is None:
+        start = time.perf_counter()      
         original_model = LlamaForCausalLM.from_pretrained(
                             model_id, config=config,
                                 load_in_4bit=use_bitsandbytes_quantization, device_map=inference_device_map)
+        end = time.perf_counter()
+        logger.debug(f"Base model load took {end - start:0.4f} seconds")
     else:
+        start = time.perf_counter()
         #Seems that one can get by not actually loading the full original model, just the quantized version!
         original_model = LlamaForCausalLM(config=config)
+        end = time.perf_counter()
+        logger.debug(f"Base model load took {end - start:0.4f} seconds")
 
     #Load the tokenizer
     tokenizer = LlamaTokenizer.from_pretrained(model_id, use_fast=True, device_map=inference_device_map)
@@ -190,9 +198,13 @@ def load_optimized_model(llama_config):
             deployment_mode=False,
         )
 
+        logger.debug("About to load quantized model")
         #Load the Intel quantized model
+        start = time.perf_counter()
         self_jit = torch.jit.load(quantized_model_path)
+        end = time.perf_counter()
         self_jit = torch.jit.freeze(self_jit.eval())
+        logger.debug(f"quantized model load took {end - start:0.4f} seconds")
         #Set self_jit as the optimized model
         ipex._set_optimized_model_for_generation(original_model, optimized_model=self_jit)
 
