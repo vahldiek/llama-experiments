@@ -30,6 +30,7 @@ from accelerate import init_empty_weights
 import toml
 import sys
 import logging
+from ipex_inference_transformers import IpexAutoInferenceTransformer
 from typing import Any, Tuple, Dict, Optional, Callable
 
 
@@ -165,58 +166,21 @@ def load_optimized_model(llama_config):
         inference_device_map=torch.device('cpu')
         use_bitsandbytes_quantization=False
 
-    #Load the base model.  While we seem to be able to avoid loading the full model when using the Intel
-    #quantized version, neither start time nor memory consumption are reduced.  Needs more investigation.
-    if quantized_model_path is None:
-        start = time.perf_counter()      
+    #Load either the base or quantized model
+    start = time.perf_counter() 
+    if llama_config.use_GPU or (quantized_model_path is None):
+     
         original_model = LlamaForCausalLM.from_pretrained(
                             model_id, config=config,
                                 load_in_4bit=use_bitsandbytes_quantization, device_map=inference_device_map)
-        end = time.perf_counter()
-        logger.debug(f"Base model load took {end - start:0.4f} seconds")
-    else:
-        start = time.perf_counter()
-        num_hidden_layers = config.num_hidden_layers
-        hidden_size = config.hidden_size
-        config.num_hidden_layers = 0
-        config.hidden_size = 0
-        #Just build a shell model class witn no hidden layers since it will be replaced by the
-        #quantized model anyway
-        original_model = LlamaForCausalLM(config=config)
-        #Need to set the hidden layers config back so the intel optimized greedy_search function
-        #can prep the inputs
-        original_model.config.num_hidden_layers = num_hidden_layers
-        original_model.config.hidden_size = hidden_size
-        end = time.perf_counter()
-        logger.debug(f"Base model load took {end - start:0.4f} seconds")
 
+    else:
+        original_model = IpexAutoInferenceTransformer.from_ipex_pretrained(model_id, quantized_model_path, config)
+
+    end = time.perf_counter()
+    logger.debug(f"Model load took {end - start:0.4f} seconds")
     #Load the tokenizer
     tokenizer = LlamaTokenizer.from_pretrained(model_id, use_fast=True, device_map=inference_device_map)
-
-    if not (quantized_model_path is None):
-        #begin optimization for using Intel quantized model
-        torch._C._jit_set_texpr_fuser_enabled(False)
-        qconfig = ipex.quantization.default_static_qconfig_mapping
-
-        #"monkey patches" the original_model object to swap in a few optimized functions
-        original_model = ipex.optimize_transformers(
-            original_model.eval(),
-            dtype=torch.float,
-            inplace=True,
-            quantization_config=qconfig,
-            deployment_mode=False,
-        )
-
-        logger.debug("About to load quantized model")
-        #Load the Intel quantized model
-        start = time.perf_counter()
-        self_jit = torch.jit.load(quantized_model_path)
-        end = time.perf_counter()
-        self_jit = torch.jit.freeze(self_jit.eval())
-        logger.debug(f"quantized model load took {end - start:0.4f} seconds")
-        #Set self_jit as the optimized model
-        ipex._set_optimized_model_for_generation(original_model, optimized_model=self_jit)
-
     return original_model, tokenizer
 
 
