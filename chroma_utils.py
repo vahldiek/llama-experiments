@@ -1,25 +1,20 @@
 import chromadb
-from chromadb.utils import embedding_functions
 import torch
 import os
-from langchain.text_splitter import RecursiveCharacterTextSplitter, CharacterTextSplitter, MarkdownHeaderTextSplitter
-from langchain.document_loaders import DirectoryLoader, PyPDFLoader, BSHTMLLoader, TextLoader
-from langchain_core.documents import Document
-from langchain.embeddings import SentenceTransformerEmbeddings
-from sentence_transformers import SentenceTransformer
+
 from langchain.vectorstores import Chroma
 # use this to configure the Chroma database  
 from chromadb.config import Settings
 from dotenv import load_dotenv
-from transformers import AutoConfig, pipeline, LlamaTokenizer, LlamaForCausalLM
-import time
 from typing import List
 from langchain.prompts import PromptTemplate
-from langchain_core.runnables import RunnablePassthrough
-from langchain.schema import StrOutputParser
+from langchain.text_splitter import RecursiveCharacterTextSplitter, MarkdownHeaderTextSplitter
+from langchain.document_loaders import PyPDFLoader, BSHTMLLoader, TextLoader
+from langchain_core.documents import Document
+from langchain.embeddings import SentenceTransformerEmbeddings
+
 import transformers_utils
-from langchain.llms.huggingface_pipeline import HuggingFacePipeline
-from langchain_experimental.chat_models import Llama2Chat
+
 import logging
 
 sentence_transformer_model="all-MiniLM-L6-v2"
@@ -183,7 +178,16 @@ Question: "{question}"
 Helpful Answer:"""
 rag_prompt_custom = PromptTemplate.from_template(rag_template)
 
+
+
 """
+
+from langchain_core.runnables import RunnablePassthrough
+from langchain.schema import StrOutputParser
+from langchain.llms.huggingface_pipeline import HuggingFacePipeline
+from langchain_experimental.chat_models import Llama2Chat
+
+
 #Almost there with langchain, if only the Llama2Chat object could be instantiated
 pipe = pipeline("text2text-generation", model=model, tokenizer=tokenizer, max_new_tokens=500)
 hf = HuggingFacePipeline(pipeline=pipe)

@@ -3,33 +3,16 @@
 #The article can be found here:  https://medium.com/@daydreamersjp/implementing-locally-hosted-llama2-chat-ui-using-streamlit-53b181651b4e
 
 
-import argparse
-import time
-import json
-import pathlib
-import os
 import logging
 from dotenv import load_dotenv
 from threading import Thread
 
 from datasets import load_dataset
-from transformers import  (LlamaTokenizer, AutoConfig, AutoModelForCausalLM,
-                            AutoTokenizer, pipeline, LlamaForCausalLM,
-                            Conversation, TextIteratorStreamer, PreTrainedModel,
-                            PreTrainedTokenizer)
+from transformers import  (PreTrainedModel, PreTrainedTokenizer)
 
 import torch
-from torch.nn.functional import pad
-from torch.utils.data import DataLoader
-
 from typing import List, Union
-
 import streamlit as st
-import intel_extension_for_pytorch as ipex
-from parse import *
-import pathlib
-import sys
-import json
 
 #Import local modules
 import transformers_utils
@@ -85,7 +68,7 @@ def load_llm(model_name : str) -> Tuple[PreTrainedModel, PreTrainedTokenizer]:
 
 
 #Select a model using the radio buttons
-def select_llm() -> Union[LlamaForCausalLM]:
+def select_llm() -> PreTrainedModel:
     model_name = st.sidebar.radio("Choose LLM:",
                                   ["llama-2-7b-chat-int8"])
 
@@ -198,7 +181,7 @@ def get_answer_from_llm(full_query, user_input) -> str:
     temperature = st.session_state.temperature
 
 
-    if isinstance(llm, LlamaForCausalLM):
+    if isinstance(llm, PreTrainedModel):
         #This call does a lot.  Prunes the conversation if necessary to stay under the
         #specified max tokens, and returns the full set of tokesn for the prompt
         input_tensor, rounds_pruned = st.session_state.conversation.create_next_prompt_tokens(full_query)

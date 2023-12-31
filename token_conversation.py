@@ -1,36 +1,9 @@
-import argparse
-import time
-import json
-import pathlib
-import os
-import timeit
-from dotenv import load_dotenv
 
-from datasets import load_dataset
-from transformers import (PreTrainedTokenizer, LlamaTokenizer, LlamaTokenizerFast, AutoConfig, 
-                            AutoModelForCausalLM, AutoTokenizer, pipeline,
-                            LlamaForCausalLM, LlamaModel, Conversation,
-                            TextStreamer)
-
+from transformers import (PreTrainedTokenizer, Conversation)
 import torch
-from torch.nn.functional import pad
-from torch.utils.data import DataLoader
-from langchain.llms.huggingface_pipeline import HuggingFacePipeline
-
-from typing import List, Union
-
-from langchain.callbacks import get_openai_callback
-from langchain.schema import (SystemMessage, HumanMessage, AIMessage)
-from langchain.callbacks.manager import CallbackManager
-from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
-import streamlit as st
-import intel_extension_for_pytorch as ipex
-from accelerate import init_empty_weights
-import toml
-import sys
 import logging
-import uuid
-from typing import Any, Tuple
+from typing import Tuple
+
 
 logger = logging.getLogger('llama2_streamlit.token_conversation')
 

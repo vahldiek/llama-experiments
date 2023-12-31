@@ -1,38 +1,25 @@
 import argparse
 import time
-import json
-import pathlib
 import os
 import timeit
 import time
 from dotenv import load_dotenv
 
 from datasets import load_dataset
-from transformers import (LlamaTokenizer, LlamaTokenizerFast, AutoConfig, 
-                            AutoModelForCausalLM, AutoTokenizer, pipeline,
-                            LlamaForCausalLM, LlamaModel, Conversation,
-                            TextStreamer)
+from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, pipeline,
+                            Conversation, TextStreamer, LlamaTokenizer)
 
 import torch
-from torch.nn.functional import pad
-from torch.utils.data import DataLoader
-from langchain.llms.huggingface_pipeline import HuggingFacePipeline
-
 from typing import List, Union
 
-from langchain.callbacks import get_openai_callback
-from langchain.schema import (SystemMessage, HumanMessage, AIMessage)
-from langchain.callbacks.manager import CallbackManager
-from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
-import streamlit as st
-import intel_extension_for_pytorch as ipex
-from accelerate import init_empty_weights
 import toml
 import sys
 import logging
 from ipex_inference_transformers import IpexAutoInferenceTransformer
-from typing import Any, Tuple, Dict, Optional, Callable
+from typing import Any, Dict, Callable
+
 #Get the beginning and ending system tokens
+#If using models other than llama, need to determine where to get these
 from  transformers.models.llama import tokenization_llama 
 
 
@@ -171,7 +158,7 @@ def load_optimized_model(transformers_config):
     start = time.perf_counter() 
     if transformers_config.use_GPU or (quantized_model_path is None):
      
-        original_model = LlamaForCausalLM.from_pretrained(
+        original_model = AutoModelForCausalLM.from_pretrained(
                             model_id, config=config,
                                 load_in_4bit=use_bitsandbytes_quantization, device_map=inference_device_map)
 
@@ -180,7 +167,7 @@ def load_optimized_model(transformers_config):
 
     end = time.perf_counter()
     logger.debug(f"Model load took {end - start:0.4f} seconds")
-    #Load the tokenizer
+    #Load the tokenizer.  Must be a llama tokenizer since it has the _ function to build prompt from conversation
     tokenizer = LlamaTokenizer.from_pretrained(model_id, use_fast=True, device_map=inference_device_map)
     return original_model, tokenizer
 
