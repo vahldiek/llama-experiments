@@ -167,7 +167,7 @@ def load_optimized_model(llama_config):
 
     #Load the base model.  While we seem to be able to avoid loading the full model when using the Intel
     #quantized version, neither start time nor memory consumption are reduced.  Needs more investigation.
-    if True or quantized_model_path is None:
+    if quantized_model_path is None:
         start = time.perf_counter()      
         original_model = LlamaForCausalLM.from_pretrained(
                             model_id, config=config,
@@ -176,8 +176,17 @@ def load_optimized_model(llama_config):
         logger.debug(f"Base model load took {end - start:0.4f} seconds")
     else:
         start = time.perf_counter()
-        #Seems that one can get by not actually loading the full original model, just the quantized version!
+        num_hidden_layers = config.num_hidden_layers
+        hidden_size = config.hidden_size
+        config.num_hidden_layers = 0
+        config.hidden_size = 0
+        #Just build a shell model class witn no hidden layers since it will be replaced by the
+        #quantized model anyway
         original_model = LlamaForCausalLM(config=config)
+        #Need to set the hidden layers config back so the intel optimized greedy_search function
+        #can prep the inputs
+        original_model.config.num_hidden_layers = num_hidden_layers
+        original_model.config.hidden_size = hidden_size
         end = time.perf_counter()
         logger.debug(f"Base model load took {end - start:0.4f} seconds")
 
