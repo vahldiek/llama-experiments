@@ -21,7 +21,7 @@ from token_conversation import TokenConversation
 from typing import Tuple
 
 
-logger = logging.getLogger('llama2_streamlit')
+logger = logging.getLogger('transformers_streamlit')
 
 def init_page() -> None:
     st.set_page_config(

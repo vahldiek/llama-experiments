@@ -5,7 +5,7 @@ import logging
 from typing import Tuple
 
 
-logger = logging.getLogger('llama2_streamlit.token_conversation')
+logger = logging.getLogger('transformers_streamlit.token_conversation')
 
 class TokenConversation():
     """
