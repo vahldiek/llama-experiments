@@ -1,5 +1,6 @@
 
-#ID or path of the base LLM to lad
+#ID or path of the base LLM to load
+#llm_model_id = "meta-llama/Llama-2-7b-chat-hf"
 llm_model_id = "./model_llama-2-7b-chat-hf"
 
 #Path to the Intel quantized model
