@@ -1,5 +1,5 @@
-#This file is intended to be launched by streamlit using the command "streamlit run ./llama2_streamlit.py"
-#This code is based upon the sample code in the insightful Medium article by Moto DEI
+#This file is intended to be launched by streamlit using the command "streamlit run ./transformers_streamlit.py"
+#This code originated from the sample code in the insightful Medium article by Moto DEI, but has been expanded substantially.
 #The article can be found here:  https://medium.com/@daydreamersjp/implementing-locally-hosted-llama2-chat-ui-using-streamlit-53b181651b4e
 
 
