@@ -41,11 +41,15 @@ def init_messages() -> None:
     if clear_button or "transformers_config" not in st.session_state:
         #reread the configuration file in case any changes were made
         st.session_state.transformers_config = transformers_utils.read_config()
-    if clear_button or "user_messages" not in st.session_state:
+    clear_messages(clear_button)
+
+
+def clear_messages(clear_now):
+    if clear_now or "user_messages" not in st.session_state:
         st.session_state.user_messages = []
     #If the tokenizer has been loaded, reset the conversation
     #otherwise the conversation will be reset once the tokenizer is loaded
-    if clear_button and "tokenizer" in st.session_state:
+    if clear_now and "tokenizer" in st.session_state:
         st.session_state.conversation = TokenConversation(st.session_state.tokenizer,
                                                    st.session_state.transformers_config.llm_system_prompt,
                                                    st.session_state.transformers_config.max_prompt_tokens)
@@ -232,6 +236,11 @@ def display_chat_history():
 
 
 def on_new_question():
+    #If the configuration file says not to store any context, reset before sending this question
+    if not st.session_state.transformers_config.use_conversation_history:
+        clear_messages(True)
+
+    
     user_question = st.session_state.user_question
     #Augment the query with information from the vector store if needed
     if st.session_state.transformers_config.use_RAG:
