@@ -17,20 +17,18 @@ Hugging Face token in the file.
 
 ## streamlit
 The sample Python code is designed to work with `streamlit` a simple HTTP server that presents a chatbot interface.
-Before launching streamlit, edit the global variables near the top of transformers_streamlit.py to point to the location of your origin and quantized models.
+Before launching streamlit, edit the parameters in `.transformers_config.toml` to point to the location of your origin and quantized models.
 To launch streamlit, you can use the script launch_streamlit.
 Note that streamlit will execute the entire Python file several times, each time anything changes in the GUI.  But it has a mechansim to avoid
 redundant expensive operations like model loading.  transformers_streamlit.py uses streamlit function decorations to ensure that models are only loaded
 once.
 
-Occasionally streamlit will hang when launching it from the devcontainer.  If so, just kill it with ^C and restart it.
+Streamlit will not begin loading the model until a browser connects to the server.  VSCode will auto-launch the browser but sometimes the
+browser will attempt to connect to streamlit before the HTTP server has started.  In such cases, it looks like streamlit is hung but simply
+reconnecting to the streamlit HTTP server usually gets things going.
 
 ## Downlaoding and saving Hugging Face models
-The Python script download_and_save_model.py is provided to download models automatically from Hugging Face and store them in a local directory for
-later retrieval.  This is useful if running the scripts in a container environment, the downloaded models can be persisted locally and retreived
-even if the development container is rebuilt.
+The Python script download_and_save_model.py is provided to download models automatically from Hugging Face and store them in a local directory for later retrieval.  This is useful if running the scripts in a container environment, the downloaded models can be persisted locally and retreived even if the development container is rebuilt.
 
 ## Retrieval Augmented Generation (RAG)
-The scripts can optionally attampt to find relevant content by first querying a Chroma in-memory vector database, and sending this content along to the
-LLM.  Options in `.transformers_config.toml` enable or disable this feature.  Executing the script `reset_RAG_database.py` will build or rebuild the database
-using the data file directory speficied in the configuration file.
+The scripts can optionally attampt to find relevant content by first querying a Chroma in-memory vector database, and sending this content along to the LLM.  Options in `.transformers_config.toml` enable or disable this feature.  Executing the script `reset_RAG_database.py` will build or rebuild the database using the data file directory speficied in the configuration file.
