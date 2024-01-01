@@ -60,11 +60,17 @@ rag_relevance_limit = 0.5
 #Maximum number of characters when splitting docs for RAG
 rag_doc_max_chars = 512
 
-#Maximum number of RAG documetns to include in prompt
+#Maximum number of RAG documents to include in prompt
 max_rag_documents = 2
 
-#If true, reset the contents of the RAG database
+#If true, reset the contents of the RAG database every time the
+#Python script is launched
 reset_RAG_db = false
 
-#If true, rescan the files in the 
+#If true, rescan the files in the directory every time the
+#Python script is launched.  If this parameter is true and
+#reset_RAG_db is false, only documents newly added to the
+#directory since the last time the database was build will
+#be added.  If reset_RAG_db is true, all documents will be
+#scanned again.
 rescan_RAG_files = false
