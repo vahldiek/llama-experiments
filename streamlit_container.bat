@@ -1,0 +1,1 @@
+docker run -it --rm -p 8880:8880 --gpus all --shm-size 128G --mount type=bind,source=".",target=/etc/models --mount type=bind,source=".",target=/etc/shared ipex-streamlit:llama2 /etc/shared/container_config.toml
