@@ -1,0 +1,5 @@
+#!/bin/bash
+pushd ..
+docker build -t="ipex-streamlit:llama2" -f ./ipex-streamlit/Dockerfile --no-cache .
+popd
+

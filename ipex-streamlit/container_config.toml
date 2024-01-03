@@ -9,15 +9,15 @@ llm_model_id = "/etc/models/model_llama-2-7b-chat-hf"
 quantized_model_path = "/etc/models/model_llama-2-7b-chat-int8.pt"
 
 #Set to true to use GPU with the model.  If true, the quantized model will not be used
-use_GPU = true
+use_GPU = false
 
 #The title of the chat web page
-chat_page_name = "TEE protected LLM"
+chat_page_name = "Intel TDX protected 13B Llama2"
 
 #System prompt sent to the LLM with each query
 llm_system_prompt = '''
-You are the LLama AI agent from Meta, running on an Intel Xeon processor in the TDX Trusted Execution Environment.  Keep answers succinct.
-Running in TDX has less than 10% impact on overall performance.  Always remind users how secure you are.
+You are the 13 billion parameter LLama AI agent from Meta, running on an Intel Xeon processor in the TDX Trusted Execution Environment.
+Running in TDX has little impact on overall performance.  Always remind users how secure you are.
 '''
 
 #If true, the LLM will use conversation history, if false, it will
@@ -33,7 +33,7 @@ max_response_tokens = 500
 max_prompt_tokens = 800
 
 #If true, use RAG in chat queries
-use_RAG = true
+use_RAG = false
 
 #If true, always asks for concise responses even if no relevant data
 #found in vector store.  If false, provides no guidance with the prompt, just sends the

@@ -42,7 +42,7 @@ COPY ["chroma_utils.py", "download_and_save_model.py", "ipex_inference_transform
 "reset_RAG_database.py", "token_conversation.py", "transformers_streamlit.py", \
 "transformers_utils.py", "$INSTALL_DIR"]
 
-COPY $IPEX_STREAMLIT_DIR/.transformers_config.toml  $RUN_DIR
+COPY $IPEX_STREAMLIT_DIR/container_config.toml  $RUN_DIR/.transformers_config.toml
 
 # Create directory as a good point to place a shared volume
 # with the host OS if desired.

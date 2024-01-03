@@ -74,7 +74,7 @@ def load_llm(model_name : str) -> Tuple[PreTrainedModel, PreTrainedTokenizer]:
 #Select a model using the radio buttons
 def select_llm() -> PreTrainedModel:
     model_name = st.sidebar.radio("Choose LLM:",
-                                  ["llama-2-7b-chat-int8"])
+                                  ["llama-2-18b-chat-int8"])
 
     return load_llm(model_name)
 
