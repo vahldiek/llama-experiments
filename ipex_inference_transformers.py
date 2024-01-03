@@ -16,7 +16,10 @@ logger = logging.getLogger('ipex_inference_transformers')
 class IpexAutoInferenceTransformer:
     #For now only support Llama.  Should work for others but only have infrastructure to
     #test Llama
-    supported_model_classes = ["LlamaForCausalLM"]
+    #First element of tuple is class from huggingface .config
+    #Second element of tuple is the class to map to
+    supported_models = [("LlamaForCausalLM", "LlamaForCausalLM"), ("LlamaModel", "LlamaForCausalLM")]
+    supported_model_architectures = [x[0] for x in supported_models]
     #override all types of init.  This class should only be used statically
     def __init__(self, *args, **kwargs):
         logger.error("Cannot create instance of IpexAutoInferenceTransformer.  Use from_ipex_pretrained static method")
@@ -31,9 +34,10 @@ class IpexAutoInferenceTransformer:
         architectures = config.architectures
         #Walk through the architectures and see if we find one that we can support
         for architecture in architectures:
-            if architecture in IpexAutoInferenceTransformer.supported_model_classes:
+            model_index = IpexAutoInferenceTransformer.supported_model_architectures.index(architecture)
+            if model_index >= 0:
                 transformers_module = importlib.import_module("transformers")
-                base_model_cls = getattr(transformers_module, architecture)
+                base_model_cls = getattr(transformers_module, IpexAutoInferenceTransformer.supported_models[model_index][1])
                 
                 #begin optimization for using Intel quantized model
                 torch._C._jit_set_texpr_fuser_enabled(False)
@@ -70,7 +74,7 @@ class IpexAutoInferenceTransformer:
 
         logger.warn(f"Cannot find supported class for {base_model_name_or_path}")
         logger.warn(f"Available classes were {architectures}")
-        logger.warn(f"Supported classes are {cls.supported_model_classes}")
+        logger.warn(f"Supported classes are {cls.supported_model_architectures}")
         return None
 
             
