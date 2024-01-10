@@ -1,10 +1,10 @@
 
 #ID or path of the base LLM to load
-#llm_model_id = "meta-llama/Llama-2-7b-chat-hf"
-llm_model_id = "./model_llama-2-7b-chat-hf"
+llm_model_id = "meta-llama/Llama-2-13b-chat-hf"
+#llm_model_id = "./model_llama-2-7b-chat-hf"
 
 #Path to the Intel quantized model
-quantized_model_path = "./saved_results/model_llama-2-7b-chat-int8.pt"
+quantized_model_path = "../models/Llama-2-13b-chat-hf-int8.pt"
 
 #Set to true to use GPU with the model.  If true, the quantized model will not be used
 use_GPU = false
