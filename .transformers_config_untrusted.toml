@@ -21,7 +21,7 @@ Your responses should be professional and succinct.  Respond with no more than 2
 
 #If true, the LLM will use conversation history, if false, it will
 #only answer one question at a time
-use_conversation_history = true
+use_conversation_history = false
 
 #Maximum number of response tokens the LLM is allowed to return before
 #stopping
@@ -32,7 +32,7 @@ max_response_tokens = 500
 max_prompt_tokens = 800
 
 #If true, use RAG in chat queries
-use_RAG = false
+use_RAG = true
 
 #If true, always asks for concise responses even if no relevant data
 #found in vector store.  If false, provides no guidance with the prompt, just sends the
@@ -48,8 +48,8 @@ Question: "{question}"
 Helpful Answer:'''
 
 #Files to process and integrate into a RAG search with the query
-rag_file_dir = "./limited_rag_documents"
-#rag_file_dir = "./untrusted_rag_documents"
+#rag_file_dir = "./limited_rag_documents"
+rag_file_dir = "./untrusted_rag_documents"
 #rag_file_dir = "./expansive_rag_documents"
 
 #Directory to store the persistent Chroma DB

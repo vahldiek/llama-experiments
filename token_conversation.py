@@ -98,8 +98,8 @@ class TokenConversation():
         #a single request
         if(len(self.base_conversation.generated_responses) > len(self.base_conversation.past_user_inputs)):
             logger.warn("Attempted to add second answer to conversation without new user input")
-            raise ValueError()
-        
+            #raise ValueError()
+            return ""
         if len(tokens.size()) != 2:
             logger.error("Expected 2D tensor with 1 array of tensors as returned by transformer.generate")
             raise ValueError()

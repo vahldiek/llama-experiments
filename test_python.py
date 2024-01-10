@@ -63,3 +63,8 @@ items = parse("[INST]{instruction}[/INST]{response}", response_str)
 
 last_response = retrive_last_llama2_response(response_str2)
 print(last_response)
+
+
+supported_models = [("LlamaForCausalLM", "LlamaForCausalLM"), ("LlamaModel", "LlamaForCausalLM")]
+supported_model_classes = [x[0] for x in supported_models]
+print(supported_model_classes)
