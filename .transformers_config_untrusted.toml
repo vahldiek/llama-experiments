@@ -68,7 +68,7 @@ max_rag_documents = 2
 #If true, reset the contents of the RAG database every time the
 #Python script is launched.  If use_RAG is false, this parameter
 #has no effect.
-reset_RAG_db = false
+reset_RAG_db = true
 
 #If true, rescan the files in the directory every time the
 #Python script is launched.  If this parameter is true and
@@ -77,4 +77,4 @@ reset_RAG_db = false
 #be added.  If reset_RAG_db is true, all documents will be
 #scanned again.  If use_RAG is false, this parameter has no
 #effect.
-rescan_RAG_files = false
+rescan_RAG_files = true

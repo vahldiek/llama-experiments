@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+#can pass configuration file on command line
 import transformers_utils
 import chroma_utils
 import logging
