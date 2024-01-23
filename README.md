@@ -32,3 +32,8 @@ The Python script `download_and_save_model.py` is provided to download models au
 
 ## Retrieval Augmented Generation (RAG)
 The scripts can optionally attampt to find relevant content by first querying a Chroma in-memory vector database, and sending this content along to the LLM.  Options in `.transformers_config.toml` enable or disable this feature.  Executing the script `reset_RAG_database.py` will build or rebuild the database using the data file directory speficied in the configuration file.
+
+## Showcasing trusted and unstrusted examples
+It may be useful to demonstrate the value of using RAG in a trusted environment like Intel® TDX.  This project contains directories containing files that have been edited to easily demonstrate the desired behavior.  To use, make any necessary edits to `.transformers_config_trusted.toml` and `.transformers_config_untrusted.toml` to point to the location where you have placed the quantized
+file.  Then in the appropriate environment user either ./launch_trusted_streamlit or ./launch_unstrusted_streamlit to launch the appropriate
+version.  The query "What are the confidential plans for Intel Labs research in AI/ML in 2024?" should return different results in each environment.
