@@ -8,7 +8,7 @@ If you want to self sign certicates, you will need to create your own certificat
 generateca_keyandcert.bat
 ```
 You will be asked to create a password to be used for signing with this CA.  You should definitely do this, otherwise it is quite
-easy for someone else to impersonate signatures from this private CA just be acquiring the CA key.
+easy for someone else to impersonate signatures from this private CA just by acquiring the CA key.
 
 ## Generate a certificate and key for the HTTPS/streamlit server
 Once the CA has been set up, you will need to generate a key and bind that key to a certifiate that uses the IP address of the server
