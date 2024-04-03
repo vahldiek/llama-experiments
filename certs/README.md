@@ -20,6 +20,6 @@ You will be asked to use the CA key password that you just created.  This batch 
 
 
 ## Add your new CA as a root CA to your PC
-To avoid SSL verification errors you can add your CA certificate to Chrome.  To do this, follow the directions at the following URL, being careful to ensure that the certificate is added to the "Trusted Root Certification Authorities" group.  You only need to follow Step 4 in this article, Steps 1-3 are accomplished with the batch files.  https://dgu2000.medium.com/working-with-self-signed-certificates-in-chrome-walkthrough-edition-a238486e6858#:~:text=To%20gain%20Chrome%E2%80%99s%20trust%2C%20follow%20the%20instruction%3A%201,websites%20then%20click%20OK%20to%20finish%20the%20process.
+To avoid SSL verification errors you can add your CA certificate to Chrome.  To do this, follow the directions at the following URL, being careful to ensure that the certificate is added to the "Trusted Root Certification Authorities" group.  You only need to follow Step 4 in this article, Steps 1-3 are accomplished with the batch files.  The certificate to add is `demoRootCA.crt`.  https://dgu2000.medium.com/working-with-self-signed-certificates-in-chrome-walkthrough-edition-a238486e6858#:~:text=To%20gain%20Chrome%E2%80%99s%20trust%2C%20follow%20the%20instruction%3A%201,websites%20then%20click%20OK%20to%20finish%20the%20process.
 
 Once you have added the certificate, a new CA named demos.intel.com will appear in the "Trusted Root Certification Authorities" tab.
