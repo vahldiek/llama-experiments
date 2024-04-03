@@ -3,19 +3,31 @@ This directory contains scripts to generate a key and certificate for a root cer
 HTTPS server (streamlit) instance hosted at a particular IP address.
 
 ## Generating the Root CA key and certificate
-If you want to self sign certicates, you will need to create your own certificate authority.  To do this run
+If you want to self sign certicates, you will need to create your own certificate authority.  To do this on Windows run
 ```
 generateca_keyandcert.bat
 ```
+
+On Linux run
+```
+generateca_keyandcert.sh
+```
+
 You will be asked to create a password to be used for signing with this CA.  You should definitely do this, otherwise it is quite
 easy for someone else to impersonate signatures from this private CA just by acquiring the CA key.
 
 ## Generate a certificate and key for the HTTPS/streamlit server
 Once the CA has been set up, you will need to generate a key and bind that key to a certifiate that uses the IP address of the server
-where your https server is hosted.  To do this run:
+where your https server is hosted.  To do this on Windows run:
 ```
 generatessl_keyandcert.bat <ip address>
 ```
+
+On Linx run:
+```
+generatessl_keyandcert.sh <ip address>
+```
+
 You will be asked to use the CA key password that you just created.  This batch file will produce two files.  `streamlit.crt` and `streamlit.key` these need to be moved to the streamlit server and referenced in the .streamlit/config.toml file.
 
 
