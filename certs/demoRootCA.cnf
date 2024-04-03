@@ -1,0 +1,17 @@
+[req]
+default_bits = 2048
+default_md = sha256
+distinguished_name = req_distinguished_name
+x509_extensions = v3_req
+prompt = no
+[req_distinguished_name]
+C = US
+ST = Oregon
+L = Hillsboro
+O = Intel
+OU = "Intel Demos"
+CN = demos.intel.com
+[v3_req]
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+basicConstraints = critical,CA:TRUE
