@@ -1,0 +1,6 @@
+*.crt
+*.key
+*.srl
+*.csr
+streamlit_csr.cnf
+streamlit.cnf

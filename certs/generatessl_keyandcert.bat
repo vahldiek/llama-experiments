@@ -5,8 +5,8 @@ if [%1]==[] goto usage
 REM replace IP address placeholder with real IP address
 copy streamlit_csr.tpl streamlit_csr.cnf
 copy streamlit.tpl streamlit.cnf
-cscript replace.vbs streamlit_csr.cnf "IP_ADDR_PLACEHOLDER" %1
-cscript replace.vbs streamlit.cnf "IP_ADDR_PLACEHOLDER" %1
+cscript replace.vbs streamlit_csr.cnf "$IP_ADDR_PLACEHOLDER" %1
+cscript replace.vbs streamlit.cnf "$IP_ADDR_PLACEHOLDER" %1
 
 REM generate a new TLS/SSL key
 openssl genrsa -out streamlit.key 2048

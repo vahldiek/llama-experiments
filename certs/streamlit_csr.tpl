@@ -10,5 +10,5 @@ ST = Oregon
 L = Hillsboro
 O = Intel
 OU = "TDX LLM Demo"
-CN = IP_ADDR_PLACEHOLDER
+CN = $IP_ADDR_PLACEHOLDER
 

@@ -5,4 +5,4 @@ extendedKeyUsage = serverAuth
 subjectAltName         = @alt_names
 
 [ alt_names ]
-IP.1 = IP_ADDR_PLACEHOLDER
+IP.1 = $IP_ADDR_PLACEHOLDER
