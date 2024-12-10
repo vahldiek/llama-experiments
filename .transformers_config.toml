@@ -43,6 +43,7 @@ Use the following pieces of context to provide an answer to the question at the 
 do not try to make up an answer.
 Context: {context}
 Question: "{question}"
+'''
 
 #Files to process and integrate into a RAG search with the query
 rag_file_dir = "./limited_rag_documents"
