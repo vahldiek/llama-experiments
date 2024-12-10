@@ -5,8 +5,12 @@ The project includes a development container that can be used with VSCode.  Alte
 The Python scripts used in this project load their configuration data from the file `.transformers_config.toml` in the top
 level directory.  A different configuration file can be specified as a command line argument.
 
-Very little of the code is specific to Llama2, it should be applicable to all Hugging Face transfomers models with minimal changes
-but it has only been tested with Llama2.
+Very little of the code is specific to Llama3.1, it should be applicable to all Hugging Face transfomers models with minimal changes
+but it has only been tested with Llama3.1.
+
+## Examples
+
+Quick to run examples can be found in the [examples](example/) folder. It builds and starts trusted and untrusted images of a chat application with access to trusted files or not.
 
 ## Installation
 It is easiest to build a container image for the development container.  The script build_dev_container is provided to perform this operation.
