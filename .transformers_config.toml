@@ -11,7 +11,7 @@ use_GPU = false
 #The title of the chat web page
 chat_page_name2 = "Protected by Intel® TDX"
 
-chat_page_name = "Llama 13B on Intel® Xeon®"
+chat_page_name = "Llama 3.1 8B on Intel® Xeon®"
 
 #System prompt sent to the LLM with each query
 llm_system_prompt = '''

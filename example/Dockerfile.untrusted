@@ -1,0 +1,56 @@
+# pull from devel image instead of base
+FROM ubuntu:22.04
+
+# Set bash as the default shell
+ENV SHELL=/bin/bash
+
+RUN if [ -f /etc/apt/apt.conf.d/proxy.conf ]; then rm /etc/apt/apt.conf.d/proxy.conf; fi && \
+    if [ ! -z ${HTTP_PROXY} ]; then echo "Acquire::http::Proxy \"${HTTP_PROXY}\";" >> /etc/apt/apt.conf.d/proxy.conf; fi && \
+    if [ ! -z ${HTTPS_PROXY} ]; then echo "Acquire::https::Proxy \"${HTTPS_PROXY}\";" >> /etc/apt/apt.conf.d/proxy.conf; fi
+
+RUN apt-get -y update
+RUN DEBIAN_FRONTEND=noninteractive apt-get -y install python3 python3-pip python3.10-venv build-essential intel-mkl libtcmalloc-minimal4 cmake ninja-build git
+RUN mkdir -p wdir
+WORKDIR wdir
+
+RUN python3 -m venv .venv
+RUN . .venv/bin/activate && \
+    python3 -m pip install torch==2.5.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu && \
+    python3 -m pip install intel_extension_for_pytorch==2.5.0 --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/cpu/us/ && \
+    python3 -m pip install transformers==4.43.1 \
+    python-dotenv==1.0.0 \
+    streamlit==1.24.1 \
+    bitsandbytes \
+    scipy \
+    chromadb \
+    unstructured \
+    unstructured[md] \
+    langchain \
+    torchvision \
+    torchaudio \
+    datasets \
+    accelerate \
+    sentencepiece \
+    sentence_transformers \
+    parse \
+    pypdf \
+    langchain-experimental
+
+#RUN git clone https://github.com/oneapi-src/oneCCL.git && \
+#    cd oneCCL && \
+#    mkdir build && \
+#    cd build && \
+#    cmake .. && \
+#    make install
+
+#Install oneccl-bind-pt(also named torch-ccl)
+RUN . .venv/bin/activate && python3 -m pip install oneccl_bind_pt==2.5.0 --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/cpu/us/
+
+RUN echo "source .venv/bin/activate" >> ~/.bashrc
+RUN echo "source /wdir/.venv/lib/python3.10/site-packages/oneccl_bindings_for_pytorch/env/setvars.sh" >> ~/.bashrc
+RUN echo "export LD_PRELOAD=$LD_PRELOAD:/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4:/wdir/libiomp5.so" >> ~/.bashrc
+RUN echo "export KMP_BLOCKTIME=1 && export KMP_TPAUSE=0\n" >> ~/.bashrc
+
+ADD libiomp5.so .
+
+ENTRYPOINT /bin/bash -c 'source /wdir/.venv/bin/activate && source /wdir/.venv/lib/python3.10/site-packages/oneccl_bindings_for_pytorch/env/setvars.sh" && export KMP_BLOCKTIME=1 && export KMP_TPAUSE=0 && cd /wdir/llama-experiments && python ./reset_RAG_database.py .transformers_config_untrusted.toml && LD_PRELOAD=$LD_PRELOAD:/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4:/wdir/libiomp5.so ./launch_untrusted_streamlit'

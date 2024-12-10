@@ -1,10 +1,9 @@
 
 #ID or path of the base LLM to load
-llm_model_id = "meta-llama/Llama-2-13b-chat-hf"
-#llm_model_id = "./model_llama-2-7b-chat-hf"
+llm_model_id = "meta-llama/Llama-3.1-8B-Instruct"
 
 #Path to the Intel quantized model
-quantized_model_path = "../models/Llama-2-13b-chat-hf-int8.pt"
+#quantized_model_path = "../models/Llama-2-13b-chat-hf-int8.pt"
 
 #Set to true to use GPU with the model.  If true, the quantized model will not be used
 use_GPU = false
@@ -12,11 +11,11 @@ use_GPU = false
 #The title of the chat web page
 chat_page_name2 = "Protected by Intel® TDX"
 
-chat_page_name = "Llama 13B on Intel® Xeon®"
+chat_page_name = "Llama 3.1 8B on Intel® Xeon®"
 
 #System prompt sent to the LLM with each query
 llm_system_prompt = '''
-Your responses should be professional and succinct.  Respond with no more than 2 or 3 short sentences. You are the 13 billion parameter LLama AI agent running on an Intel Xeon processor.  Always answer in 2 or 3 sentences.
+Your responses should be professional and succinct.  Respond with no more than 2 or 3 short sentences. You are the 8 billion parameter LLama AI agent running on an Intel Xeon processor.  Always answer in 2 or 3 sentences.
 '''
 
 #If true, the LLM will use conversation history, if false, it will
@@ -29,7 +28,7 @@ max_response_tokens = 500
 
 #Maximum number of tokens to send to LLM.  If tokens becomes larger
 #than this, older rounds of the conversation are pruned off.
-max_prompt_tokens = 800
+max_prompt_tokens = 2000
 
 #If true, use RAG in chat queries
 use_RAG = true
