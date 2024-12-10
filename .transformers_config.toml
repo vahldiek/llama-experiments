@@ -39,12 +39,10 @@ use_RAG = false
 always_use_RAG_prompt = false
 
 rag_prompt_template = '''
-Use the following pieces of context to provide a brief 2 or 3 sentence answer to the question at the end.  If you don't know the answer, say that you don't know,
-do not try to make up an answer.  Your answer should be 2 or 3 sentences.
-Always say "thanks for asking!" at the end of the answer.
+Use the following pieces of context to provide an answer to the question at the end.  If you don't know the answer, say that you don't know,
+do not try to make up an answer.
 Context: {context}
 Question: "{question}"
-Helpful Answer:'''
 
 #Files to process and integrate into a RAG search with the query
 rag_file_dir = "./limited_rag_documents"

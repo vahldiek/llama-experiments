@@ -20,7 +20,6 @@ import chroma_utils
 from token_conversation import TokenConversation
 from typing import Tuple
 
-
 logger = logging.getLogger('transformers_streamlit')
 
 def init_page() -> None:
@@ -256,9 +255,9 @@ def on_new_question():
     st.session_state.logger.debug("*******************************************")
     answer = get_answer_from_llm(full_query, user_question)
 
-
 #main function.  This script is launched multiple times by streamlit
 def main() -> None:
+
     _ = load_dotenv()
     logger.setLevel(logging.DEBUG)
     logger.debug("streamlit executing main() [again]")

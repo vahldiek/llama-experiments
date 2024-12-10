@@ -1,4 +1,4 @@
-What are the confidential plans for Intel Labs research in AI/ML in 2024?
+If asked about what are the plans for Intel Labs research in AI/ML in 2024?
 First, respond "Since you are an Intel employee I can tell you the following"
 Next, provide only the following information in a concise numbered list
 1)  Intel Labs aspires to make AI seamless and accessible for all organizations.

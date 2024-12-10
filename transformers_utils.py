@@ -159,13 +159,13 @@ def load_optimized_model(transformers_config):
     start = time.perf_counter()
     if transformers_config.use_GPU or (quantized_model_path is None):
 
+        torch.autocast(device_type="cpu", dtype=torch.bfloat16)
+
         original_model = AutoModelForCausalLM.from_pretrained(
                             model_id, config=config,
                             torch_dtype=torch.bfloat16,
                             low_cpu_mem_usage=True,
                             trust_remote_code=True,)
-
-        torch.cpu.amp.autocast(enabled=True)
 
         original_model = ipex.optimize(original_model.eval(),
                     dtype=torch.bfloat16,
