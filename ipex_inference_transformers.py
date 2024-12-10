@@ -24,7 +24,7 @@ class IpexAutoInferenceTransformer:
     def __init__(self, *args, **kwargs):
         logger.error("Cannot create instance of IpexAutoInferenceTransformer.  Use from_ipex_pretrained static method")
         raise NotImplementedError()
-    
+
     #Do not use this method, use from_ipex_pretrained
     @classmethod
     def from_ipex_pretrained(cls, base_model_name_or_path: str, quantized_model_path: str, config=None) -> PreTrainedModel:
@@ -38,7 +38,7 @@ class IpexAutoInferenceTransformer:
             if model_index >= 0:
                 transformers_module = importlib.import_module("transformers")
                 base_model_cls = getattr(transformers_module, IpexAutoInferenceTransformer.supported_models[model_index][1])
-                
+
                 #begin optimization for using Intel quantized model
                 torch._C._jit_set_texpr_fuser_enabled(False)
                 qconfig = ipex.quantization.default_static_qconfig_mapping
@@ -53,12 +53,12 @@ class IpexAutoInferenceTransformer:
                 logger.debug(f"Created {architecture} model object")
 
                 #"monkey patches" the original_model object to swap in a few optimized functions
-                base_model = ipex.optimize_transformers(
+                base_model = ipex.optimize(
                     base_model.eval(),
                     dtype=torch.float,
-                    inplace=True,
-                    quantization_config=qconfig,
-                    deployment_mode=False)
+                    inplace=True)#,
+                    #qconfig_summary_file="/wdir/models/llama-3/best_configure-3.1-8B.json",
+                    #deployment_mode=False)
 
                 logger.debug("About to load quantized model")
                 #Load the Intel quantized model
@@ -70,16 +70,15 @@ class IpexAutoInferenceTransformer:
                 #Set self_jit as the optimized model
                 ipex._set_optimized_model_for_generation(base_model, optimized_model=self_jit)
                 return base_model
-            
+
 
         logger.warn(f"Cannot find supported class for {base_model_name_or_path}")
         logger.warn(f"Available classes were {architectures}")
         logger.warn(f"Supported classes are {cls.supported_model_architectures}")
         return None
 
-            
-        
 
 
 
-    
+
+

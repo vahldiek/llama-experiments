@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 from datasets import load_dataset
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, pipeline,
-                            Conversation, TextStreamer, LlamaTokenizer)
+                            TextStreamer, LlamaTokenizer)
 
 import torch
 from typing import List, Union
@@ -17,10 +17,11 @@ import sys
 import logging
 from ipex_inference_transformers import IpexAutoInferenceTransformer
 from typing import Any, Dict, Callable
+import intel_extension_for_pytorch as ipex
 
 #Get the beginning and ending system tokens
 #If using models other than llama, need to determine where to get these
-from  transformers.models.llama import tokenization_llama 
+from  transformers.models.llama import tokenization_llama
 
 
 DEFAULT_CONFIG_FILE = "./.transformers_config.toml"
@@ -142,7 +143,7 @@ def read_config():
 
 
 def load_optimized_model(transformers_config):
-    
+
     config = AutoConfig.from_pretrained(transformers_config.llm_model_id, torchscript=True)
     model_id = transformers_config.llm_model_id
     quantized_model_path = transformers_config.quantized_model_path
@@ -155,20 +156,29 @@ def load_optimized_model(transformers_config):
         use_bitsandbytes_quantization=False
 
     #Load either the base or quantized model
-    start = time.perf_counter() 
+    start = time.perf_counter()
     if transformers_config.use_GPU or (quantized_model_path is None):
-     
+
         original_model = AutoModelForCausalLM.from_pretrained(
                             model_id, config=config,
-                                load_in_4bit=use_bitsandbytes_quantization, device_map=inference_device_map)
+                            torch_dtype=torch.bfloat16,
+                            low_cpu_mem_usage=True,
+                            trust_remote_code=True,)
+
+        torch.cpu.amp.autocast(enabled=True)
+
+        original_model = ipex.optimize(original_model.eval(),
+                    dtype=torch.bfloat16,
+                    inplace=True
+                )
 
     else:
         original_model = IpexAutoInferenceTransformer.from_ipex_pretrained(model_id, quantized_model_path, config)
 
     end = time.perf_counter()
-    logger.debug(f"Model load took {end - start:0.4f} seconds")
+    logger.debug(f"Model {model_id} load took {end - start:0.4f} seconds")
     #Load the tokenizer.  Must be a llama tokenizer since it has the _ function to build prompt from conversation
-    tokenizer = LlamaTokenizer.from_pretrained(model_id, use_fast=True, device_map=inference_device_map)
+    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
     return original_model, tokenizer
 
 
@@ -183,7 +193,7 @@ def query_model(model, tokenizer, input_tensor):
     num_input_tokens = input_size[1]
 
     output_tensor = model.generate(
-        input_tensor, max_new_tokens=2000, 
+        input_tensor, max_new_tokens=2000,
         streamer=streamer, **generate_kwargs
     )
 
@@ -211,7 +221,7 @@ def send_model_queries(model, tokenizer, query_list, transformers_config, time_q
 
     g_model = model
 
-    conv = Conversation()
+    conv = pipeline("conversational")
     g_results = []
     g_input_tensor = None
     #prepend the first request with the system string
@@ -251,7 +261,7 @@ def merge_rag_results(vector_store, query, transformers_config):
     retriever = vector_store.as_retriever(search_type="similarity_score_threshold",
                                         search_kwargs={'k': transformers_config.max_rag_documents, 'score_threshold' : transformers_config.rag_relevance_limit})
     docs = retriever.invoke(query)
-    #If no local docs met the similarity threshold, 
+    #If no local docs met the similarity threshold,
     if(len(docs) == 0):
         logger.debug(f"+++ No relevant RAG docs found for \"{query}\"+++")
         if(transformers_config.always_use_RAG_prompt):

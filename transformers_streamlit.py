@@ -105,7 +105,7 @@ class GenerateStoppedException(Exception):
     def __init__(self, details: str):
         self.details = details
 
-    
+
 #This is called back each time model generate created a word
 def model_generate_callback(word: str, is_done: bool) -> None:
     #If user stops generate in the middle, the session state is reset but generate is not
@@ -142,7 +142,7 @@ def send_prompt_to_llm(input_tensor)  -> str:
 
         generate_kwargs = dict(inputs=input_tensor, streamer=streamer, max_new_tokens=config.max_response_tokens,
                             do_sample=False, temperature=temperature, num_beams=1)
-        
+
         #indicate that we expect a response from generate in case user stops the
         #response in the middle
         st.session_state.generate_response = ""
@@ -178,7 +178,7 @@ def get_answer_from_llm(full_query, user_input) -> str:
         st.session_state.model is None):
         message_placeholder.markdown("Model not initialized")
         return
-    
+
     tokenizer = st.session_state.tokenizer
     conversation = st.session_state.conversation
     llm = st.session_state.model
@@ -201,7 +201,7 @@ def get_answer_from_llm(full_query, user_input) -> str:
             message_placeholder.markdown("Model not initialized")
             return "Model not initialized"
 
-    
+
     return send_prompt_to_llm(input_tensor)
 
 
@@ -233,6 +233,7 @@ def display_chat_history():
             else:
                 with st.chat_message("assistant"):
                     st.markdown(text)
+                    logger.debug(text)
 
 
 def on_new_question():
@@ -240,7 +241,7 @@ def on_new_question():
     if not st.session_state.transformers_config.use_conversation_history:
         clear_messages(True)
 
-    
+
     user_question = st.session_state.user_question
     #Augment the query with information from the vector store if needed
     if st.session_state.transformers_config.use_RAG:
@@ -268,7 +269,7 @@ def main() -> None:
         if(len(st.session_state) == 0):
             logger.warning("User pressed stop during config file load")
             st.stop()
-        
+
     config = st.session_state.transformers_config
     init_page()
     st.session_state.vector_store = init_rag(config.use_RAG)
@@ -276,15 +277,15 @@ def main() -> None:
     if(len(st.session_state) == 0):
         logger.warning("User pressed stop during init_rag")
         st.stop()
-    
+
 
     #load the default LLM
-    st.session_state.model, st.session_state.tokenizer = load_llm("llama-2-7b-chat-int8")
+    st.session_state.model, st.session_state.tokenizer = load_llm("llama-2-8B-Instruct")
     #If user pressed stop during model load, session state will be
     #wiped out
     if(len(st.session_state) == 0):
         st.stop()
-    
+
     if "conversation" not in st.session_state:
         st.session_state.conversation = TokenConversation(st.session_state.tokenizer,
                                                         st.session_state.transformers_config.llm_system_prompt,
