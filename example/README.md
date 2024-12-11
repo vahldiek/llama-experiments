@@ -11,8 +11,8 @@
 Build trusted and untrusetd image.
 
 ```
-DOCKER_BUILDKIT=1 docker build -f example/Dockerfile.trusted -t llm-chat-trusted .
-DOCKER_BUILDKIT=1 docker build -f example/Dockerfile.untrusted -t llm-chat-untrusted .
+DOCKER_BUILDKIT=1 docker build -f example/Dockerfile.trusted -t llm-chat-trusted example/
+DOCKER_BUILDKIT=1 docker build -f example/Dockerfile.untrusted -t llm-chat-untrusted example/
 ```
 
 ## Run Image
